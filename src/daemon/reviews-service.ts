@@ -1,11 +1,69 @@
 import { generateReviewId } from "../shared/id.js";
-import type { CreateReviewRequest, CreateReviewResponse, GetReviewRequest } from "../shared/internal-api.js";
-import { RevisionFileSchema, type Review } from "../shared/types.js";
+import {
+  type CloseReviewRequest,
+  type CloseReviewResponse,
+  type CreateReviewRequest,
+  type CreateReviewResponse,
+  type CreateThreadRequest,
+  type CreateThreadResponse,
+  type EditCommentRequest,
+  type EditCommentResponse,
+  type GetReviewRequest,
+  type PostNoteRequest,
+  type PostNoteResponse,
+  type ReopenReviewRequest,
+  type ReopenReviewResponse,
+  type ReplyRequest,
+  type ReplyResponse,
+  type SetStatusRequest,
+  type SetStatusResponse,
+  type SubmitRevisionRequest,
+  type SubmitRevisionResponse,
+  WAIT_FOR_ACTIVITY_DEFAULT_TIMEOUT_SECONDS,
+  WAIT_FOR_ACTIVITY_MAX_TIMEOUT_SECONDS,
+  type WaitForActivityRequest,
+  type WaitForActivityResponse,
+} from "../shared/internal-api.js";
+import { type Actor, type Anchor, type Comment, type Note, RevisionFileSchema, type Review, ThreadSchema } from "../shared/types.js";
+import { appendEvent } from "./events.js";
+import { NotFoundError, ReviewClosedError, ValidationError } from "./errors.js";
 import { captureDiff, GitError } from "./git.js";
+import { nextCommentId, nextNoteId, nextThreadId } from "./ids.js";
 import { readIndex, readReview, resolveReviewId, writeReview } from "./persistence.js";
-import { projectReview, type StoredReview, type StoredRevision } from "./storage-types.js";
+import { findAnchorLine } from "./reanchor.js";
+import { projectReview, type StoredReview, type StoredRevision, type StoredThread } from "./storage-types.js";
+import { waitForReviewActivity } from "./waiters.js";
 
 export { GitError };
+
+async function resolveAndReadReview(repoRoot: string, idOrTitle: string): Promise<StoredReview> {
+  const id = await resolveReviewId(repoRoot, idOrTitle);
+  if (!id) {
+    const index = await readIndex(repoRoot);
+    const known = index.map((e) => `${e.id} ("${e.title}")`).join(", ") || "(none)";
+    throw new NotFoundError(`Unknown review "${idOrTitle}". Known reviews: ${known}`);
+  }
+  const stored = await readReview(repoRoot, id);
+  if (!stored) {
+    throw new NotFoundError(`Review "${id}" is indexed but its file is missing from .codevolley/reviews/.`);
+  }
+  return stored;
+}
+
+function assertWritable(review: StoredReview): void {
+  if (review.status === "closed") {
+    throw new ReviewClosedError(review.id);
+  }
+}
+
+function findThreadOrThrow(review: StoredReview, threadId: string): StoredThread {
+  const thread = review.threads.find((t) => t.id === threadId);
+  if (!thread) {
+    const known = review.threads.map((t) => t.id).join(", ") || "(none)";
+    throw new NotFoundError(`Unknown thread "${threadId}" in review "${review.id}". Known threads: ${known}`);
+  }
+  return thread;
+}
 
 export async function createReview(
   repoRoot: string,
@@ -87,4 +145,270 @@ export async function getReview(repoRoot: string, req: GetReviewRequest): Promis
     : stored;
 
   return { ok: true, review: projectReview(filtered) };
+}
+
+// Anchors against the latest revision (design doc §3: create_thread).
+export async function createThread(
+  repoRoot: string,
+  req: CreateThreadRequest,
+  actor: Actor,
+): Promise<CreateThreadResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+  assertWritable(review);
+
+  const latestRevision = review.revisions[review.revisions.length - 1];
+  const file = latestRevision.files.find((f) => f.path === req.path);
+  if (!file) {
+    const known = latestRevision.files.map((f) => f.path).join(", ") || "(none)";
+    throw new ValidationError(`Path "${req.path}" is not in revision ${latestRevision.number}. Valid paths: ${known}`);
+  }
+  if (file.status === "binary") {
+    throw new ValidationError(`"${req.path}" is a binary file — it has no line content to anchor a thread to.`);
+  }
+
+  const side = req.side ?? "NEW";
+  const content = side === "NEW" ? file.newContent : file.oldContent;
+  if (content === null) {
+    throw new ValidationError(`"${req.path}" has no ${side} content in revision ${latestRevision.number} (file is ${file.status}).`);
+  }
+  const lineCount = content.split("\n").length;
+  if (req.line < 1 || req.line > lineCount) {
+    throw new ValidationError(`Line ${req.line} is out of range for "${req.path}" (${side} side has ${lineCount} lines).`);
+  }
+  if (req.end_line != null && (req.end_line < req.line || req.end_line > lineCount)) {
+    throw new ValidationError(`end_line ${req.end_line} is out of range for "${req.path}" (${side} side has ${lineCount} lines).`);
+  }
+
+  const anchor: Anchor = {
+    revision: latestRevision.number,
+    path: req.path,
+    side,
+    line: req.line,
+    endLine: req.end_line ?? null,
+  };
+
+  const thread: StoredThread = {
+    id: nextThreadId(review),
+    severity: req.severity,
+    status: "open",
+    title: req.title,
+    anchor,
+    currentAnchor: anchor,
+    anchorState: "current",
+    suggestion: req.suggestion ?? null,
+    comments: [],
+    _commentSeq: 0,
+  };
+  const comment: Comment = { id: nextCommentId(thread), author: actor, body: req.body, createdAt: new Date().toISOString() };
+  thread.comments.push(comment);
+  review.threads.push(thread);
+
+  appendEvent(review, actor, "thread_created", ThreadSchema.parse(thread));
+  await writeReview(repoRoot, review);
+
+  return { thread: thread.id };
+}
+
+export async function reply(repoRoot: string, req: ReplyRequest, actor: Actor): Promise<ReplyResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+  assertWritable(review);
+  const thread = findThreadOrThrow(review, req.thread);
+
+  const comment: Comment = { id: nextCommentId(thread), author: actor, body: req.body, createdAt: new Date().toISOString() };
+  thread.comments.push(comment);
+  appendEvent(review, actor, "comment_added", { thread: ThreadSchema.parse(thread), comment });
+
+  if (req.status !== undefined && req.status !== thread.status) {
+    thread.status = req.status;
+    appendEvent(review, actor, "thread_status_changed", {
+      thread: thread.id,
+      status: thread.status,
+      path: thread.anchor.path,
+      title: thread.title,
+    });
+  }
+
+  await writeReview(repoRoot, review);
+  return { thread: thread.id, status: thread.status };
+}
+
+// Truncates the thread: every comment after the edited one is discarded
+// (design doc §3: edit_comment). Only the comment's own author may edit it.
+export async function editComment(repoRoot: string, req: EditCommentRequest, actor: Actor): Promise<EditCommentResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+  assertWritable(review);
+  const thread = findThreadOrThrow(review, req.thread);
+
+  const idx = thread.comments.findIndex((c) => c.id === req.comment);
+  if (idx === -1) {
+    const known = thread.comments.map((c) => c.id).join(", ") || "(none)";
+    throw new NotFoundError(`Unknown comment "${req.comment}" in thread "${thread.id}". Known comments: ${known}`);
+  }
+  const target = thread.comments[idx];
+  if (target.author !== actor) {
+    throw new ValidationError(`Comment "${req.comment}" was authored by "${target.author}", not "${actor}" — edit_comment can only edit the caller's own comments.`);
+  }
+
+  const truncated = thread.comments.slice(idx + 1).map((c) => c.id);
+  target.body = req.body;
+  thread.comments = thread.comments.slice(0, idx + 1);
+
+  appendEvent(review, actor, "comment_edited", { thread: ThreadSchema.parse(thread), comment: target, truncated });
+  await writeReview(repoRoot, review);
+
+  return { thread: thread.id, comments: thread.comments };
+}
+
+export async function setStatus(repoRoot: string, req: SetStatusRequest, actor: Actor): Promise<SetStatusResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+  assertWritable(review);
+  const thread = findThreadOrThrow(review, req.thread);
+
+  thread.status = req.status;
+  appendEvent(review, actor, "thread_status_changed", {
+    thread: thread.id,
+    status: thread.status,
+    path: thread.anchor.path,
+    title: thread.title,
+  });
+
+  await writeReview(repoRoot, review);
+  return { thread: thread.id, status: thread.status };
+}
+
+export async function postNote(repoRoot: string, req: PostNoteRequest, actor: Actor): Promise<PostNoteResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+  assertWritable(review);
+
+  const note: Note = { id: nextNoteId(review), author: actor, kind: req.kind, body: req.body, createdAt: new Date().toISOString() };
+  review.notes.push(note);
+  appendEvent(review, actor, "note_added", note);
+
+  await writeReview(repoRoot, review);
+  return { note: note.id };
+}
+
+// Posts the summary as a `summary` note, sets status closed (design doc §3:
+// close_review). No writable guard — closing an already-closed review is a
+// harmless no-op re-close, not an error.
+export async function closeReview(repoRoot: string, req: CloseReviewRequest, actor: Actor): Promise<CloseReviewResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+
+  const note: Note = { id: nextNoteId(review), author: actor, kind: "summary", body: req.summary, createdAt: new Date().toISOString() };
+  review.notes.push(note);
+  review.status = "closed";
+
+  appendEvent(review, actor, "review_closed", { summary: req.summary });
+  await writeReview(repoRoot, review);
+
+  return { review: review.id, status: "closed" };
+}
+
+export async function reopenReview(repoRoot: string, req: ReopenReviewRequest, actor: Actor): Promise<ReopenReviewResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+
+  review.status = "open";
+  appendEvent(review, actor, "review_reopened", {});
+  await writeReview(repoRoot, review);
+
+  return { review: review.id, status: "open" };
+}
+
+// Long-polls the event log for actor:user events past `after` (design doc
+// §3: wait_for_activity). Re-reads from disk each wake because writeReview
+// is the sole writer and its atomic rename means every read sees a fully
+// consistent snapshot — never a torn write.
+export async function waitForActivity(repoRoot: string, req: WaitForActivityRequest): Promise<WaitForActivityResponse> {
+  const timeoutSeconds = Math.min(req.timeout_seconds ?? WAIT_FOR_ACTIVITY_DEFAULT_TIMEOUT_SECONDS, WAIT_FOR_ACTIVITY_MAX_TIMEOUT_SECONDS);
+  const deadline = Date.now() + timeoutSeconds * 1000;
+
+  const initial = await resolveAndReadReview(repoRoot, req.review);
+  if (req.after > initial.lastSeq) {
+    throw new ValidationError(
+      `"after" (${req.after}) is greater than review "${initial.id}"'s current lastSeq (${initial.lastSeq}) — a cursor from the future indicates a bug.`,
+    );
+  }
+
+  let review = initial;
+  for (;;) {
+    const userEvents = review.events.filter((e) => e.seq > req.after && e.actor === "user");
+    if (userEvents.length > 0) {
+      return { events: userEvents, lastSeq: review.lastSeq, timedOut: false };
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      return { events: [], lastSeq: review.lastSeq, timedOut: true };
+    }
+
+    await waitForReviewActivity(review.id, remainingMs);
+    review = await resolveAndReadReview(repoRoot, req.review);
+  }
+}
+
+// Captures a new immutable revision and re-anchors open threads (design doc
+// §3: submit_revision). base/head/paths default to the previous revision's
+// values — WORKTREE is always re-captured fresh even when unchanged.
+// Submitting to a closed review reopens it implicitly, since submitting new
+// work is itself an unambiguous signal to reopen.
+export async function submitRevision(repoRoot: string, req: SubmitRevisionRequest, actor: Actor): Promise<SubmitRevisionResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+  const previous = review.revisions[review.revisions.length - 1];
+
+  const base = req.base ?? previous.base;
+  const head = req.head ?? previous.head;
+  const paths = req.paths ?? previous.paths;
+  const capture = await captureDiff(repoRoot, base, head, paths);
+
+  const newRevision: StoredRevision = {
+    number: previous.number + 1,
+    message: req.message,
+    base: capture.resolvedBase,
+    head: capture.resolvedHead,
+    paths,
+    capturedAt: new Date().toISOString(),
+    files: capture.files,
+  };
+  review.revisions.push(newRevision);
+
+  if (review.status === "closed") {
+    review.status = "open";
+    appendEvent(review, actor, "review_reopened", {});
+  }
+
+  const reanchored: { thread: string; line: number }[] = [];
+  const outdated: string[] = [];
+
+  for (const thread of review.threads) {
+    if (thread.anchorState === "outdated") continue; // design doc §3: already-outdated threads aren't reprocessed
+
+    const sourceRevision = review.revisions.find((r) => r.number === thread.currentAnchor.revision);
+    const newLine = sourceRevision ? findAnchorLine(sourceRevision, newRevision, thread.currentAnchor) : null;
+
+    if (newLine === null) {
+      thread.anchorState = "outdated";
+      outdated.push(thread.id);
+      continue;
+    }
+
+    const span = thread.currentAnchor.endLine !== null ? thread.currentAnchor.endLine - thread.currentAnchor.line : null;
+    thread.currentAnchor = {
+      revision: newRevision.number,
+      path: thread.currentAnchor.path,
+      side: thread.currentAnchor.side,
+      line: newLine,
+      endLine: span !== null ? newLine + span : null,
+    };
+    reanchored.push({ thread: thread.id, line: newLine });
+  }
+
+  appendEvent(review, actor, "revision_submitted", { revision: newRevision.number });
+  await writeReview(repoRoot, review);
+
+  return {
+    revision: newRevision.number,
+    files: RevisionFileSchema.array().parse(newRevision.files),
+    reanchored,
+    outdated,
+  };
 }

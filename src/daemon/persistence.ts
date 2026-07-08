@@ -7,6 +7,7 @@ import {
   type StoredReview,
   StoredReviewSchema,
 } from "./storage-types.js";
+import { notifyReviewActivity } from "./waiters.js";
 
 function codevolleyDir(repoRoot: string): string {
   return path.join(repoRoot, ".codevolley");
@@ -80,6 +81,10 @@ export async function writeReview(repoRoot: string, review: StoredReview): Promi
     index[existingIdx] = entry;
   }
   await writeIndex(repoRoot, index);
+
+  // Wakes any wait_for_activity long-polls on this review now that the new
+  // state is durably on disk (not before — a waiter re-reads from disk).
+  notifyReviewActivity(review.id);
 }
 
 // Tools accept id or title (design doc §1). Exact id match wins; falls back

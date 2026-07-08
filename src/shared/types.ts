@@ -35,6 +35,7 @@ export const EventTypeSchema = z.enum([
   "revision_submitted",
   "user_done",
   "review_closed",
+  "review_reopened",
 ]);
 export type EventType = z.infer<typeof EventTypeSchema>;
 

@@ -129,7 +129,7 @@ Threads may anchor to **any line of any file present in the revision** (either s
 { "seq": 43, "createdAt": "…", "actor": "user", "type": "comment_added", "payload": { /* see §4 */ } }
 ```
 
-Types: `thread_created`, `comment_added`, `comment_edited`, `thread_status_changed`, `note_added`, `revision_submitted`, `user_done`, `review_closed`. Every state change appends an event, whichever side caused it.
+Types: `thread_created`, `comment_added`, `comment_edited`, `thread_status_changed`, `note_added`, `revision_submitted`, `user_done`, `review_closed`, `review_reopened`. Every state change appends an event, whichever side caused it.
 
 ---
 
@@ -293,6 +293,7 @@ Payloads carry enough context that Claude can usually act **without** a follow-u
 | `revision_submitted` | `{ "revision": 2 }` (Claude-actor only; excluded from the user-filtered stream). |
 | `user_done` | `{}` — the user clicked "Done for now". Signals Claude to exit the wait loop and wrap up (address anything outstanding, then `close_review` or summarize in chat). |
 | `review_closed` | `{ "summary": "…?" }` |
+| `review_reopened` | `{}` — emitted both by explicit `reopen_review` and by `submit_revision`'s implicit reopen (alongside `revision_submitted`). |
 
 ---
 
