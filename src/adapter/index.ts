@@ -147,6 +147,26 @@ server.registerTool(
 );
 
 server.registerTool(
+  "acknowledge_thread",
+  {
+    description:
+      "Clear a thread's 'awaiting Claude' flag without replying — use when the user's latest comment warrants no response (e.g. an acknowledgement or praise). Does not change the thread's status.",
+    inputSchema: {
+      review: z.string(),
+      thread: z.string(),
+    },
+  },
+  async (args) => {
+    try {
+      const result = await daemon.acknowledgeThread(args);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+    } catch (err) {
+      return toToolError(err);
+    }
+  },
+);
+
+server.registerTool(
   "post_note",
   {
     description: "Post a review-level note not anchored to any line (progress ticker, summary, or directive).",
@@ -246,6 +266,12 @@ server.registerTool(
     }
   },
 );
+
+// Heartbeat while this session is connected so the UI can show "Claude is
+// working" vs "no session running" (see daemon waiters.isOnline). unref() so
+// it never keeps the process alive on its own.
+void daemon.heartbeat();
+setInterval(() => void daemon.heartbeat(), 5000).unref();
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

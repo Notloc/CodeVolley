@@ -1,6 +1,7 @@
 import { useState } from "react";
 import * as api from "../api.js";
 import type { Thread, ThreadStatus } from "../types.js";
+import { Markdown } from "./Markdown.js";
 
 const STATUS_TRANSITIONS: { status: ThreadStatus; label: string }[] = [
   { status: "resolved", label: "Resolve" },
@@ -8,7 +9,22 @@ const STATUS_TRANSITIONS: { status: ThreadStatus; label: string }[] = [
   { status: "open", label: "Reopen" },
 ];
 
-export function ThreadPanel({ reviewId, thread, onChanged }: { reviewId: string; thread: Thread; onChanged: () => void }) {
+// Posted as a reply when the user hits "Fix it!" — a directive Claude picks up
+// through wait_for_activity like any other comment.
+const FIX_IT_DIRECTIVE =
+  "**Fix it** — take the obvious action to resolve this thread: make the change, then reply here with what you did.";
+
+export function ThreadPanel({
+  reviewId,
+  thread,
+  claudeWorking,
+  onChanged,
+}: {
+  reviewId: string;
+  thread: Thread;
+  claudeWorking: boolean;
+  onChanged: () => void;
+}) {
   const [replyBody, setReplyBody] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
@@ -19,6 +35,11 @@ export function ThreadPanel({ reviewId, thread, onChanged }: { reviewId: string;
   const expanded = override ?? thread.status === "open";
 
   const availableTransitions = STATUS_TRANSITIONS.filter((t) => t.status !== thread.status);
+
+  // The thread is flagged as awaiting Claude (server-tracked: set by user
+  // activity, cleared when Claude replies or acknowledges) and a Claude session
+  // is actively working — so show the "replying…" spinner.
+  const showReplying = claudeWorking && thread.awaitingClaude;
 
   return (
     <div className={`thread-panel severity-${thread.severity} status-${thread.status} ${expanded ? "" : "collapsed"}`}>
@@ -62,10 +83,17 @@ export function ThreadPanel({ reviewId, thread, onChanged }: { reviewId: string;
               </div>
             </div>
           ) : (
-            <div className="comment-body">{c.body}</div>
+            <div className="comment-body"><Markdown>{c.body}</Markdown></div>
           )}
         </div>
       ))}
+
+      {showReplying && (
+        <div className="comment replying">
+          <span className="spinner" />
+          <span>Claude is replying…</span>
+        </div>
+      )}
 
       {thread.suggestion && (
         <div className="suggestion-block">
@@ -76,8 +104,9 @@ export function ThreadPanel({ reviewId, thread, onChanged }: { reviewId: string;
 
       <div className="thread-reply">
         <textarea placeholder="Reply…" value={replyBody} onChange={(e) => setReplyBody(e.target.value)} rows={2} />
-        <div className="composer-actions">
+        <div className="composer-actions thread-reply-actions">
           <button
+            className="reply-button"
             disabled={busy || replyBody.trim().length === 0}
             onClick={async () => {
               setBusy(true);
@@ -89,20 +118,37 @@ export function ThreadPanel({ reviewId, thread, onChanged }: { reviewId: string;
           >
             Reply
           </button>
-          {availableTransitions.map((t) => (
-            <button
-              key={t.status}
-              disabled={busy}
-              onClick={async () => {
-                setBusy(true);
-                await api.setStatus(reviewId, thread.id, t.status);
-                setBusy(false);
-                onChanged();
-              }}
-            >
-              {t.label}
-            </button>
-          ))}
+          <button
+            className="fix-it-button"
+            disabled={busy}
+            title="Ask Claude to take the obvious action and resolve this thread"
+            onClick={async () => {
+              setBusy(true);
+              await api.reply(reviewId, thread.id, FIX_IT_DIRECTIVE);
+              setBusy(false);
+              onChanged();
+            }}
+          >
+            Fix it!
+          </button>
+          {availableTransitions.length > 0 && (
+            <div className="reply-transitions">
+              {availableTransitions.map((t) => (
+                <button
+                  key={t.status}
+                  disabled={busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    await api.setStatus(reviewId, thread.id, t.status);
+                    setBusy(false);
+                    onChanged();
+                  }}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
         </>

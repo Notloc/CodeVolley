@@ -438,7 +438,66 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .author-claude .comment-author { color: #f0883e; }
 .author-user .comment-author { color: #6e9bf0; }
-.comment-body { white-space: pre-wrap; line-height: 1.45; }
+.comment-body { line-height: 1.45; }
+
+/* Pending "Claude is replying…" placeholder in a thread awaiting a reply. */
+.comment.replying {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-style: dashed;
+  color: #f0883e;
+  font-size: 0.82rem;
+  font-style: italic;
+}
+.spinner {
+  display: inline-block;
+  width: 0.85em;
+  height: 0.85em;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Rendered Markdown (comment bodies). */
+.markdown > :first-child { margin-top: 0; }
+.markdown > :last-child { margin-bottom: 0; }
+.markdown p { margin: 0.5rem 0; }
+.markdown ul, .markdown ol { margin: 0.5rem 0; padding-left: 1.4rem; }
+.markdown li { margin: 0.15rem 0; }
+.markdown a { color: var(--accent); text-decoration: none; }
+.markdown a:hover { text-decoration: underline; }
+.markdown code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+}
+.markdown pre {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.65rem;
+  border-radius: 6px;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  overflow-x: auto;
+}
+.markdown pre code { padding: 0; border: none; background: none; font-size: 0.82rem; }
+.markdown blockquote {
+  margin: 0.5rem 0;
+  padding: 0.1rem 0.75rem;
+  border-left: 3px solid var(--border);
+  color: var(--text-muted);
+}
+.markdown h1, .markdown h2, .markdown h3, .markdown h4 { margin: 0.75rem 0 0.35rem; font-size: 1em; font-weight: 700; }
+.markdown table { border-collapse: collapse; margin: 0.5rem 0; }
+.markdown th, .markdown td { border: 1px solid var(--border); padding: 0.2rem 0.5rem; }
+.markdown img { max-width: 100%; }
+.markdown hr { border: none; border-top: 1px solid var(--border); margin: 0.75rem 0; }
 .suggestion-block {
   margin: 0.5rem 0;
   border: 1px solid var(--border);
@@ -452,6 +511,23 @@ button:disabled { opacity: 0.5; cursor: default; }
 
 .composer-row { display: flex; gap: 0.5rem; margin-bottom: 0.4rem; }
 .composer-row select { width: auto; }
+
+/* Reply + Fix it! sit left; the status transitions (resolve / won't fix)
+   float right. */
+.reply-transitions { margin-left: auto; display: flex; gap: 0.5rem; }
+
+/* Reply lights up in the logo blue once it has something to send. */
+.reply-button:not(:disabled) {
+  border-color: #5b8def;
+  color: #8db4f6;
+  background: color-mix(in srgb, #5b8def 16%, transparent);
+}
+.reply-button:not(:disabled):hover { background: color-mix(in srgb, #5b8def 30%, transparent); }
+.fix-it-button {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  color: color-mix(in srgb, var(--accent) 65%, var(--text-muted));
+}
+.fix-it-button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 
 .other-threads {
   margin-top: 1rem;

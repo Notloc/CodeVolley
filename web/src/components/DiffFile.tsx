@@ -27,12 +27,14 @@ export function DiffFile({
   revisionNumber,
   file,
   threads,
+  claudeWorking,
   onChanged,
 }: {
   reviewId: string;
   revisionNumber: number;
   file: RevisionFile;
   threads: Thread[];
+  claudeWorking: boolean;
   onChanged: () => void;
 }) {
   const [content, setContent] = useState<FileContent | null>(null);
@@ -162,7 +164,7 @@ export function DiffFile({
         )}
         {rowThreads.map((t) => (
           <div key={t.id} className="full-row thread-row">
-            <ThreadPanel reviewId={reviewId} thread={t} onChanged={onChanged} />
+            <ThreadPanel reviewId={reviewId} thread={t} claudeWorking={claudeWorking} onChanged={onChanged} />
           </div>
         ))}
       </Fragment>
@@ -208,7 +210,7 @@ export function DiffFile({
                 {t.currentAnchor.path}:{t.currentAnchor.line} (revision {t.currentAnchor.revision})
                 {t.anchorState === "outdated" && " · outdated"}
               </div>
-              <ThreadPanel reviewId={reviewId} thread={t} onChanged={onChanged} />
+              <ThreadPanel reviewId={reviewId} thread={t} claudeWorking={claudeWorking} onChanged={onChanged} />
             </div>
           ))}
         </div>

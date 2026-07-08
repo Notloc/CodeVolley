@@ -1,5 +1,7 @@
 import { generateReviewId } from "../shared/id.js";
 import {
+  type AcknowledgeThreadRequest,
+  type AcknowledgeThreadResponse,
   type CloseReviewRequest,
   type CloseReviewResponse,
   type CreateReviewRequest,
@@ -35,7 +37,7 @@ import { nextCommentId, nextNoteId, nextThreadId } from "./ids.js";
 import { readIndex, readReview, resolveReviewId, writeReview } from "./persistence.js";
 import { findAnchorLine } from "./reanchor.js";
 import { projectReview, type StoredReview, type StoredRevision, type StoredThread } from "./storage-types.js";
-import { isListening, setListening, waitForReviewActivity } from "./waiters.js";
+import { isListening, isOnline, setListening, waitForReviewActivity } from "./waiters.js";
 
 export { GitError };
 
@@ -207,6 +209,9 @@ export async function createThread(
     anchorState: "current",
     suggestion: req.suggestion ?? null,
     comments: [],
+    // A user-authored thread needs Claude's attention; a Claude review comment
+    // is awaiting the user, not Claude.
+    awaitingClaude: actor === "user",
     _commentSeq: 0,
   };
   const comment: Comment = { id: nextCommentId(thread), author: actor, body: req.body, createdAt: new Date().toISOString() };
@@ -226,10 +231,14 @@ export async function reply(repoRoot: string, req: ReplyRequest, actor: Actor): 
 
   const comment: Comment = { id: nextCommentId(thread), author: actor, body: req.body, createdAt: new Date().toISOString() };
   thread.comments.push(comment);
+  // A user reply reopens the need for Claude's attention; a Claude reply clears
+  // it (it's now the user's turn).
+  thread.awaitingClaude = actor === "user";
   appendEvent(review, actor, "comment_added", { thread: ThreadSchema.parse(thread), comment });
 
   if (req.status !== undefined && req.status !== thread.status) {
     thread.status = req.status;
+    if (thread.status !== "open") thread.awaitingClaude = false;
     appendEvent(review, actor, "thread_status_changed", {
       thread: thread.id,
       status: thread.status,
@@ -275,6 +284,9 @@ export async function setStatus(repoRoot: string, req: SetStatusRequest, actor: 
   const thread = findThreadOrThrow(review, req.thread);
 
   thread.status = req.status;
+  // A resolved/wontfix thread no longer awaits Claude; a user reopening one is
+  // asking for Claude again.
+  thread.awaitingClaude = thread.status === "open" && actor === "user";
   appendEvent(review, actor, "thread_status_changed", {
     thread: thread.id,
     status: thread.status,
@@ -284,6 +296,29 @@ export async function setStatus(repoRoot: string, req: SetStatusRequest, actor: 
 
   await writeReview(repoRoot, review);
   return { thread: thread.id, status: thread.status };
+}
+
+// Clears the "awaiting Claude" flag without adding a comment — for when the
+// user's message warrants no reply (design: Claude can dismiss it). No-op on
+// status, so the thread stays open/resolved as-is.
+export async function acknowledgeThread(
+  repoRoot: string,
+  req: AcknowledgeThreadRequest,
+  actor: Actor,
+): Promise<AcknowledgeThreadResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+  assertWritable(review);
+  const thread = findThreadOrThrow(review, req.thread);
+
+  thread.awaitingClaude = false;
+  appendEvent(review, actor, "thread_attention_cleared", {
+    thread: thread.id,
+    path: thread.anchor.path,
+    title: thread.title,
+  });
+
+  await writeReview(repoRoot, review);
+  return { thread: thread.id, awaitingClaude: thread.awaitingClaude };
 }
 
 export async function postNote(repoRoot: string, req: PostNoteRequest, actor: Actor): Promise<PostNoteResponse> {
@@ -364,9 +399,9 @@ export async function waitForActivity(repoRoot: string, req: WaitForActivityRequ
 // Presence (design doc §5) — whether a wait_for_activity call is currently
 // parked on this review. Resolves id-or-title first since `isListening` is
 // keyed by canonical review id.
-export async function getPresence(repoRoot: string, reviewIdOrTitle: string): Promise<{ listening: boolean }> {
+export async function getPresence(repoRoot: string, reviewIdOrTitle: string): Promise<{ listening: boolean; online: boolean }> {
   const review = await resolveAndReadReview(repoRoot, reviewIdOrTitle);
-  return { listening: isListening(review.id) };
+  return { listening: isListening(review.id), online: isOnline() };
 }
 
 // Captures a new immutable revision and re-anchors open threads (design doc

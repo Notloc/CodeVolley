@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { type Context, Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
+  AcknowledgeThreadRequestSchema,
   CloseReviewRequestSchema,
   CreateReviewRequestSchema,
   CreateThreadRequestSchema,
@@ -21,6 +22,7 @@ import type { Actor } from "../shared/types.js";
 import { NotFoundError, ReviewClosedError, ValidationError } from "./errors.js";
 import { GitError } from "./git.js";
 import {
+  acknowledgeThread,
   closeReview,
   createReview,
   createThread,
@@ -38,7 +40,7 @@ import {
   submitRevision,
   waitForActivity,
 } from "./reviews-service.js";
-import { waitForReviewActivity } from "./waiters.js";
+import { recordHeartbeat, waitForReviewActivity } from "./waiters.js";
 
 // The daemon's cwd is the *reviewed* repo, not CodeVolley's own install
 // location — @hono/node-server's serveStatic only supports cwd-relative
@@ -131,6 +133,15 @@ function registerReviewWriteRoutes(app: Hono, repoRoot: string, prefix: string, 
     return handled(c, () => setStatus(repoRoot, parsed.data, actor));
   });
 
+  app.post(`${prefix}/reviews/:idOrTitle/threads/:threadId/acknowledge`, async (c) => {
+    const parsed = AcknowledgeThreadRequestSchema.safeParse({
+      review: c.req.param("idOrTitle"),
+      thread: c.req.param("threadId"),
+    });
+    if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+    return handled(c, () => acknowledgeThread(repoRoot, parsed.data, actor));
+  });
+
   app.post(`${prefix}/reviews/:idOrTitle/notes`, async (c) => {
     const parsed = PostNoteRequestSchema.safeParse({ ...(await c.req.json()), review: c.req.param("idOrTitle") });
     if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
@@ -148,6 +159,13 @@ export function createApp(repoRoot: string, port: number): Hono {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
+
+  // Adapter liveness ping — records that a Claude session is connected so the
+  // UI can distinguish "working" from "no session running".
+  app.post("/internal/heartbeat", (c) => {
+    recordHeartbeat();
+    return c.json({ ok: true });
+  });
 
   app.get("/internal/reviews", (c) => handled(c, () => listReviews(repoRoot)));
 

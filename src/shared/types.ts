@@ -31,6 +31,7 @@ export const EventTypeSchema = z.enum([
   "comment_added",
   "comment_edited",
   "thread_status_changed",
+  "thread_attention_cleared",
   "note_added",
   "revision_submitted",
   "user_done",
@@ -66,6 +67,11 @@ export const ThreadSchema = z.object({
   anchorState: AnchorStateSchema,
   suggestion: z.string().nullable(),
   comments: z.array(CommentSchema),
+  // True when there's user input on this thread that Claude hasn't handled:
+  // set by user comments/creation, cleared when Claude replies or explicitly
+  // acknowledges. Independent of status (open/resolved/wontfix). Defaulted so
+  // reviews persisted before this field load cleanly.
+  awaitingClaude: z.boolean().default(false),
 });
 export type Thread = z.infer<typeof ThreadSchema>;
 

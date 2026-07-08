@@ -36,6 +36,7 @@ export interface Thread {
   anchorState: AnchorState;
   suggestion: string | null;
   comments: Comment[];
+  awaitingClaude: boolean;
 }
 
 export interface Note {
@@ -79,6 +80,7 @@ export type EventType =
   | "comment_added"
   | "comment_edited"
   | "thread_status_changed"
+  | "thread_attention_cleared"
   | "note_added"
   | "revision_submitted"
   | "user_done"

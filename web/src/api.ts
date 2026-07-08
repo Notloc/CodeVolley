@@ -84,7 +84,7 @@ export function markDone(reviewId: string): Promise<{ review: string }> {
   return request(`/api/reviews/${encodeURIComponent(reviewId)}/done`, jsonPost({}));
 }
 
-export function getPresence(reviewId: string): Promise<{ listening: boolean }> {
+export function getPresence(reviewId: string): Promise<{ listening: boolean; online: boolean }> {
   return request(`/api/reviews/${encodeURIComponent(reviewId)}/presence`);
 }
 

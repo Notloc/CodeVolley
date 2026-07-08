@@ -91,6 +91,15 @@ export type SetStatusRequest = z.infer<typeof SetStatusRequestSchema>;
 export const SetStatusResponseSchema = z.object({ thread: z.string(), status: ThreadStatusSchema });
 export type SetStatusResponse = z.infer<typeof SetStatusResponseSchema>;
 
+export const AcknowledgeThreadRequestSchema = z.object({
+  review: z.string().min(1),
+  thread: z.string().min(1),
+});
+export type AcknowledgeThreadRequest = z.infer<typeof AcknowledgeThreadRequestSchema>;
+
+export const AcknowledgeThreadResponseSchema = z.object({ thread: z.string(), awaitingClaude: z.boolean() });
+export type AcknowledgeThreadResponse = z.infer<typeof AcknowledgeThreadResponseSchema>;
+
 export const PostNoteRequestSchema = z.object({
   review: z.string().min(1),
   kind: NoteKindSchema,

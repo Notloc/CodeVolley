@@ -24,6 +24,9 @@ import {
   type ReplyRequest,
   type ReplyResponse,
   ReplyResponseSchema,
+  type AcknowledgeThreadRequest,
+  type AcknowledgeThreadResponse,
+  AcknowledgeThreadResponseSchema,
   type SetStatusRequest,
   type SetStatusResponse,
   SetStatusResponseSchema,
@@ -63,6 +66,16 @@ async function callDaemon(path: string, init?: RequestInit): Promise<unknown> {
     throw new DaemonApiError(parsed.success ? parsed.data.error : `Daemon returned HTTP ${res.status}`);
   }
   return body;
+}
+
+// Liveness ping (fire-and-forget): tells the daemon a Claude session is
+// connected. Swallows errors — the daemon may simply not be running.
+export async function heartbeat(): Promise<void> {
+  try {
+    await fetch(`${DAEMON_URL}/internal/heartbeat`, { method: "POST" });
+  } catch {
+    // daemon unreachable; nothing to do
+  }
 }
 
 export async function createReview(req: CreateReviewRequest): Promise<CreateReviewResponse> {
@@ -116,6 +129,14 @@ export async function setStatus(req: SetStatusRequest): Promise<SetStatusRespons
     { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(req) },
   );
   return SetStatusResponseSchema.parse(body);
+}
+
+export async function acknowledgeThread(req: AcknowledgeThreadRequest): Promise<AcknowledgeThreadResponse> {
+  const body = await callDaemon(
+    `/internal/reviews/${encodeURIComponent(req.review)}/threads/${encodeURIComponent(req.thread)}/acknowledge`,
+    jsonPost(req),
+  );
+  return AcknowledgeThreadResponseSchema.parse(body);
 }
 
 export async function postNote(req: PostNoteRequest): Promise<PostNoteResponse> {

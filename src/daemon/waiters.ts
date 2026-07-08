@@ -39,3 +39,17 @@ export function setListening(reviewId: string, isListening: boolean): void {
 export function isListening(reviewId: string): boolean {
   return listening.has(reviewId);
 }
+
+// Adapter liveness: the MCP adapter pings while a Claude session is connected.
+// Lets the UI tell "actively working" from "no session running" — both
+// otherwise present as not-listening. Global (per daemon/repo), not per-review.
+const ONLINE_TTL_MS = 15_000;
+let lastHeartbeatAt = 0;
+
+export function recordHeartbeat(): void {
+  lastHeartbeatAt = Date.now();
+}
+
+export function isOnline(): boolean {
+  return Date.now() - lastHeartbeatAt < ONLINE_TTL_MS;
+}

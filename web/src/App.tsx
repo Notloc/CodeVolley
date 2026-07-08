@@ -61,12 +61,14 @@ function FileSection({
   revisionNumber,
   file,
   threads,
+  claudeWorking,
   onChanged,
 }: {
   reviewId: string;
   revisionNumber: number;
   file: RevisionFile;
   threads: Thread[];
+  claudeWorking: boolean;
   onChanged: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -79,7 +81,14 @@ function FileSection({
       </button>
       {!collapsed && (
         <LazyMount minHeight={120}>
-          <DiffFile reviewId={reviewId} revisionNumber={revisionNumber} file={file} threads={threads} onChanged={onChanged} />
+          <DiffFile
+            reviewId={reviewId}
+            revisionNumber={revisionNumber}
+            file={file}
+            threads={threads}
+            claudeWorking={claudeWorking}
+            onChanged={onChanged}
+          />
         </LazyMount>
       )}
     </section>
@@ -91,6 +100,7 @@ function ReviewView({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [listening, setListening] = useState<boolean | null>(null);
+  const [online, setOnline] = useState(false);
 
   const refresh = useCallback(() => {
     api.getReview(id).then(setReview).catch((err) => setError(String(err.message ?? err)));
@@ -112,9 +122,14 @@ function ReviewView({ id }: { id: string }) {
   useEffect(() => {
     if (!review || review.status !== "open") {
       setListening(null);
+      setOnline(false);
       return;
     }
-    const poll = () => api.getPresence(id).then((p) => setListening(p.listening));
+    const poll = () =>
+      api.getPresence(id).then((p) => {
+        setListening(p.listening);
+        setOnline(p.online);
+      });
     poll();
     const interval = setInterval(poll, 4000);
     return () => clearInterval(interval);
@@ -124,6 +139,10 @@ function ReviewView({ id }: { id: string }) {
   if (!review) return <div className="loading">Loading review…</div>;
 
   const revision = review.revisions[review.revisions.length - 1];
+
+  // Claude is actively working this review (online session, not parked in a
+  // wait) — drives the "replying…" spinner on threads awaiting a reply.
+  const claudeWorking = review.status === "open" && online && listening === false;
 
   const scrollToFile = (path: string) => {
     setSelectedPath(path);
@@ -160,6 +179,7 @@ function ReviewView({ id }: { id: string }) {
                 revisionNumber={revision.number}
                 file={f}
                 threads={review.threads.filter((t) => t.anchor.path === f.path || t.currentAnchor.path === f.path)}
+                claudeWorking={claudeWorking}
                 onChanged={refresh}
               />
             ))}
