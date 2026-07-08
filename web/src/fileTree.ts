@@ -43,6 +43,20 @@ export function buildFileTree(files: RevisionFile[]): TreeNode[] {
   return toNodes(root, "");
 }
 
+// Flattens the tree back to a file list in display order (depth-first,
+// directories before files), so the diff stack can match the tree's ordering.
+export function orderedFiles(files: RevisionFile[]): RevisionFile[] {
+  const out: RevisionFile[] = [];
+  const walk = (nodes: TreeNode[]) => {
+    for (const node of nodes) {
+      if (node.type === "dir") walk(node.children);
+      else out.push(node.file);
+    }
+  };
+  walk(buildFileTree(files));
+  return out;
+}
+
 function toNodes(dir: MutableDir, prefix: string): TreeNode[] {
   const nodes: TreeNode[] = [];
 

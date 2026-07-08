@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { FILE_STATUS_SYMBOL } from "../fileStatus.js";
 import { buildFileTree, type TreeNode } from "../fileTree.js";
 import type { FileGroup } from "../sections.js";
@@ -23,6 +23,20 @@ export function FileTree({
 }) {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set());
+  const listRef = useRef<HTMLUListElement>(null);
+
+  // Keep the highlighted (front-and-center) file visible within the tree's own
+  // scroll area — nudging only when it's off-screen, and only the tree's
+  // scrollTop so the page isn't affected.
+  useEffect(() => {
+    const container = listRef.current;
+    const el = container?.querySelector<HTMLElement>("li.selected");
+    if (!container || !el) return;
+    const c = container.getBoundingClientRect();
+    const e = el.getBoundingClientRect();
+    if (e.top < c.top) container.scrollTop -= c.top - e.top + 8;
+    else if (e.bottom > c.bottom) container.scrollTop += e.bottom - c.bottom + 8;
+  }, [selectedPath]);
 
   function toggle(setter: (fn: (prev: Set<string>) => Set<string>) => void, key: string) {
     setter((prev) => {
@@ -96,7 +110,7 @@ export function FileTree({
   }
 
   return (
-    <ul className="file-tree">
+    <ul className="file-tree" ref={listRef}>
       {groups.map((group) => {
         const groupKey = group.name ?? "__all";
         const isSectionCollapsed = group.name !== null && collapsedSections.has(group.name);

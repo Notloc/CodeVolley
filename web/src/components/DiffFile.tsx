@@ -75,10 +75,9 @@ export function DiffFile({
 
   // Only threads anchored (successfully, non-outdated) to the revision
   // currently on screen can be placed inline at a real line in `rows` —
-  // anything else (outdated, or last matched against an older revision)
-  // gets listed separately rather than guessed at.
+  // anything else (outdated, or last matched against an older revision) is
+  // surfaced by the file header's outdated badge + modal instead.
   const inlineThreads = threads.filter((t) => t.anchorState === "current" && t.currentAnchor.revision === revisionNumber);
-  const otherThreads = threads.filter((t) => !inlineThreads.includes(t));
 
   function threadsAt(row: UnifiedRow): Thread[] {
     return inlineThreads.filter(
@@ -158,13 +157,17 @@ export function DiffFile({
           </div>
         </div>
         {isComposerAt(row) && composer && (
-          <div className={`full-row composer-row-wrapper kind-${row.kind}`}>
-            <ThreadComposer onCancel={() => setComposer(null)} onSubmit={(input) => submitThread(composer.side, composer.line, input)} />
+          <div className="full-row">
+            <div className={`pinned composer-row-wrapper kind-${row.kind}`}>
+              <ThreadComposer onCancel={() => setComposer(null)} onSubmit={(input) => submitThread(composer.side, composer.line, input)} />
+            </div>
           </div>
         )}
         {rowThreads.map((t) => (
-          <div key={t.id} className={`full-row thread-row kind-${row.kind}`}>
-            <ThreadPanel reviewId={reviewId} thread={t} claudeWorking={claudeWorking} onChanged={onChanged} />
+          <div key={t.id} className="full-row">
+            <div className={`pinned thread-row kind-${row.kind}`}>
+              <ThreadPanel reviewId={reviewId} thread={t} claudeWorking={claudeWorking} onChanged={onChanged} />
+            </div>
           </div>
         ))}
       </Fragment>
@@ -178,45 +181,32 @@ export function DiffFile({
           item.kind === "row" ? (
             renderRow(item.index)
           ) : (
-            <div key={`gap-${item.key}`} className="full-row expander-row">
-              <div className="expander-btns">
-                <button
-                  className="expander-btn"
-                  title="Show 10 more lines (shift-click for all)"
-                  onClick={(ev) => digGap(item.key, item.len, "top", ev.shiftKey)}
-                >
-                  ↓ 10
-                </button>
-                <button
-                  className="expander-btn"
-                  title="Show 10 more lines (shift-click for all)"
-                  onClick={(ev) => digGap(item.key, item.len, "bottom", ev.shiftKey)}
-                >
-                  ↑ 10
-                </button>
+            <div key={`gap-${item.key}`} className="full-row">
+              <div className="pinned expander-row">
+                <div className="expander-btns">
+                  <button
+                    className="expander-btn"
+                    title="Show 10 more lines (shift-click for all)"
+                    onClick={(ev) => digGap(item.key, item.len, "top", ev.shiftKey)}
+                  >
+                    ↓ 10
+                  </button>
+                  <button
+                    className="expander-btn"
+                    title="Show 10 more lines (shift-click for all)"
+                    onClick={(ev) => digGap(item.key, item.len, "bottom", ev.shiftKey)}
+                  >
+                    ↑ 10
+                  </button>
+                </div>
+                <span className="expander-label">
+                  {item.hidden} unchanged {item.hidden === 1 ? "line" : "lines"}
+                </span>
               </div>
-              <span className="expander-label">
-                {item.hidden} unchanged {item.hidden === 1 ? "line" : "lines"}
-              </span>
             </div>
           ),
         )}
       </div>
-
-      {otherThreads.length > 0 && (
-        <div className="other-threads">
-          <div className="other-threads-label">Threads not shown inline (outdated, or anchored to an earlier revision)</div>
-          {otherThreads.map((t) => (
-            <div key={t.id} className="other-thread">
-              <div className="thread-meta">
-                {t.currentAnchor.path}:{t.currentAnchor.line} (revision {t.currentAnchor.revision})
-                {t.anchorState === "outdated" && " · outdated"}
-              </div>
-              <ThreadPanel reviewId={reviewId} thread={t} claudeWorking={claudeWorking} onChanged={onChanged} />
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

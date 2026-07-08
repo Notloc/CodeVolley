@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import * as api from "./api.js";
 import { DiffFile } from "./components/DiffFile.js";
 import { FileTree } from "./components/FileTree.js";
+import { OutdatedThreadsModal } from "./components/OutdatedThreadsModal.js";
 import { ReviewActions } from "./components/ReviewActions.js";
 import { ReviewPicker } from "./components/ReviewPicker.js";
 import { FILE_STATUS_SYMBOL } from "./fileStatus.js";
+import { orderedFiles } from "./fileTree.js";
 import { groupFiles, type Section } from "./sections.js";
 import type { Review, RevisionFile, Thread } from "./types.js";
 
@@ -74,13 +76,41 @@ function FileSection({
   onChanged: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
+  const [showOutdated, setShowOutdated] = useState(false);
+
+  // Threads that can't be placed inline against the current revision (outdated
+  // or anchored to an earlier revision) — surfaced via a header badge + modal.
+  const outdated = threads.filter((t) => !(t.anchorState === "current" && t.currentAnchor.revision === revisionNumber));
+
   return (
     <section id={fileAnchorId(file.path)} className={`file-section${collapsed ? " collapsed" : ""}`}>
-      <button className="file-section-header" onClick={() => setCollapsed((c) => !c)}>
+      <div className="file-section-header" onClick={() => setCollapsed((c) => !c)}>
         <span className="collapse-caret">{collapsed ? "▸" : "▾"}</span>
         <span className={`badge badge-${file.status}`} title={file.status}>{FILE_STATUS_SYMBOL[file.status]}</span>
         <span className="file-section-path">{file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}</span>
-      </button>
+        {outdated.length > 0 && (
+          <button
+            className="outdated-badge"
+            title="Show outdated threads"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowOutdated(true);
+            }}
+          >
+            {outdated.length} outdated
+          </button>
+        )}
+      </div>
+      {showOutdated && (
+        <OutdatedThreadsModal
+          reviewId={reviewId}
+          path={file.path}
+          threads={outdated}
+          claudeWorking={claudeWorking}
+          onChanged={onChanged}
+          onClose={() => setShowOutdated(false)}
+        />
+      )}
       {!collapsed && (
         <LazyMount minHeight={120}>
           <DiffFile
@@ -144,6 +174,39 @@ function ReviewView({ id }: { id: string }) {
     const interval = setInterval(poll, 4000);
     return () => clearInterval(interval);
   }, [id, review?.status]);
+
+  // Scroll-spy: highlight whichever file is front-and-center in the viewport.
+  // Every file's `.file-section` wrapper is always in the DOM (even lazy ones),
+  // so we pick the section whose top is closest above a reference line.
+  useEffect(() => {
+    let raf = 0;
+    const compute = () => {
+      raf = 0;
+      const refY = window.innerHeight * 0.35;
+      let active: string | null = null;
+      let activeTop = -Infinity;
+      for (const el of document.querySelectorAll<HTMLElement>(".file-section")) {
+        const top = el.getBoundingClientRect().top;
+        if (top <= refY && top > activeTop) {
+          activeTop = top;
+          active = el.id.slice("file-".length);
+        }
+      }
+      const first = document.querySelector<HTMLElement>(".file-section");
+      if (!active && first) active = first.id.slice("file-".length);
+      if (active) setSelectedPath((prev) => (prev === active ? prev : active));
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(compute);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    compute();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      cancelAnimationFrame(raf);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, review !== null]);
 
   if (error) return <div className="error">Failed to load review: {error}</div>;
   if (!review) return <div className="loading">Loading review…</div>;
@@ -215,7 +278,7 @@ function ReviewView({ id }: { id: string }) {
             {stackGroups.map((group) => (
               <div key={group.name ?? "__all"} className="stack-group">
                 {group.name && <div className="stack-section">{group.name}</div>}
-                {group.files.map((f) => (
+                {orderedFiles(group.files).map((f) => (
                   <FileSection
                     key={f.path}
                     reviewId={id}
