@@ -9,6 +9,7 @@
   --text-muted: #99a1b3;     /* blue-grey */
   --border: #2a2f3b;         /* blue-tinted hairline */
   --bg-subtle: #1f232c;      /* subtle fills (hovers, inset rows) */
+  --code-bg: #191c24;        /* diff/code surface, distinct from the page */
   --accent: #ff5d9e;         /* brand pink */
 }
 
@@ -272,7 +273,9 @@ button:disabled { opacity: 0.5; cursor: default; }
   padding-bottom: 0.3rem;
   border-bottom: 1px solid var(--border);
 }
-.file-tree .file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.file-tree .file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+/* Directory rows: the compressed path segment, slightly muted vs files. */
+.file-tree li.file-tree-dir .file-path { color: var(--text-muted); }
 .file-tree .thread-count {
   background: #b8860b;
   color: white;
@@ -286,9 +289,12 @@ button:disabled { opacity: 0.5; cursor: default; }
 .file-tree .thread-count.outdated { background: #6b7180; }
 
 .badge {
-  font-size: 0.65rem;
-  text-transform: uppercase;
-  padding: 0.1rem 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1;
+  font-weight: 700;
+  padding: 0.15rem 0;
+  min-width: 1.15rem;
+  text-align: center;
   border-radius: 4px;
   color: white;
   flex-shrink: 0;
@@ -318,12 +324,13 @@ button:disabled { opacity: 0.5; cursor: default; }
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.4rem 0.6rem;
+  padding: 0.7rem 0.8rem;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px 8px 0 0;
   font-family: ui-monospace, monospace;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
+  font-weight: 600;
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -331,9 +338,9 @@ button:disabled { opacity: 0.5; cursor: default; }
 .file-section.collapsed .file-section-header { border-radius: 8px; }
 .file-section-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-section .diff-file { border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; }
-.diff-placeholder { border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; }
+.diff-placeholder { border: 1px solid var(--border); border-top: none; border-radius: 0 0 8px 8px; background: var(--code-bg); }
 
-.diff-file { min-width: 0; overflow-x: auto; container-type: inline-size; }
+.diff-file { min-width: 0; overflow-x: auto; container-type: inline-size; background: var(--code-bg); }
 .binary-file { color: var(--text-muted); padding: 1rem; }
 .diff-table {
   display: grid;

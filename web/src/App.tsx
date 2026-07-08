@@ -4,6 +4,7 @@ import { DiffFile } from "./components/DiffFile.js";
 import { FileTree } from "./components/FileTree.js";
 import { ReviewActions } from "./components/ReviewActions.js";
 import { ReviewPicker } from "./components/ReviewPicker.js";
+import { FILE_STATUS_SYMBOL } from "./fileStatus.js";
 import { groupFiles, type Section } from "./sections.js";
 import type { Review, RevisionFile, Thread } from "./types.js";
 
@@ -77,7 +78,7 @@ function FileSection({
     <section id={fileAnchorId(file.path)} className={`file-section${collapsed ? " collapsed" : ""}`}>
       <button className="file-section-header" onClick={() => setCollapsed((c) => !c)}>
         <span className="collapse-caret">{collapsed ? "▸" : "▾"}</span>
-        <span className={`badge badge-${file.status}`}>{file.status}</span>
+        <span className={`badge badge-${file.status}`} title={file.status}>{FILE_STATUS_SYMBOL[file.status]}</span>
         <span className="file-section-path">{file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}</span>
       </button>
       {!collapsed && (

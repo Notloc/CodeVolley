@@ -1,6 +1,10 @@
-import { Fragment, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
+import { FILE_STATUS_SYMBOL } from "../fileStatus.js";
+import { buildFileTree, type TreeNode } from "../fileTree.js";
 import type { FileGroup } from "../sections.js";
-import type { RevisionFile, Thread } from "../types.js";
+import type { Thread } from "../types.js";
+
+const INDENT_REM = 0.85;
 
 export function FileTree({
   groups,
@@ -17,11 +21,13 @@ export function FileTree({
   sectionFilter: string | null;
   onFilterSection: (name: string) => void;
 }) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  function toggleSection(name: string) {
-    setCollapsed((prev) => {
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+  const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set());
+
+  function toggle(setter: (fn: (prev: Set<string>) => Set<string>) => void, key: string) {
+    setter((prev) => {
       const next = new Set(prev);
-      next.has(name) ? next.delete(name) : next.add(name);
+      next.has(key) ? next.delete(key) : next.add(key);
       return next;
     });
   }
@@ -36,38 +42,71 @@ export function FileTree({
     return threads.filter((t) => t.anchorState === "outdated" && inFile(t, path)).length;
   }
 
-  function fileItem(f: RevisionFile) {
-    const count = openThreadCount(f.path);
-    const outdated = outdatedThreadCount(f.path);
-    return (
-      <li key={f.path} className={f.path === selectedPath ? "selected" : ""} onClick={() => onSelect(f.path)}>
-        <span className={`badge badge-${f.status}`}>{f.status}</span>
-        <span className="file-path">{f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}</span>
-        {outdated > 0 && (
-          <span className="thread-count outdated" title={`${outdated} outdated thread${outdated === 1 ? "" : "s"}`}>
-            {outdated}
-          </span>
-        )}
-        {count > 0 && (
-          <span className="thread-count" title={`${count} open thread${count === 1 ? "" : "s"}`}>
-            {count}
-          </span>
-        )}
-      </li>
-    );
+  function indentStyle(depth: number) {
+    return { paddingLeft: `calc(0.4rem + ${depth * INDENT_REM}rem)` };
+  }
+
+  function renderNodes(nodes: TreeNode[], depth: number, groupKey: string): ReactNode[] {
+    const out: ReactNode[] = [];
+    for (const node of nodes) {
+      if (node.type === "dir") {
+        const key = `${groupKey}:${node.path}`;
+        const isCollapsed = collapsedDirs.has(key);
+        out.push(
+          <li key={`d:${key}`} className="file-tree-dir" style={indentStyle(depth)} onClick={() => toggle(setCollapsedDirs, key)}>
+            <span className="collapse-caret">{isCollapsed ? "▸" : "▾"}</span>
+            <span className="file-path" title={node.path}>
+              {node.name}
+            </span>
+          </li>,
+        );
+        if (!isCollapsed) out.push(...renderNodes(node.children, depth + 1, groupKey));
+      } else {
+        const f = node.file;
+        const count = openThreadCount(f.path);
+        const outdated = outdatedThreadCount(f.path);
+        out.push(
+          <li
+            key={`f:${f.path}`}
+            className={f.path === selectedPath ? "selected" : ""}
+            style={indentStyle(depth)}
+            onClick={() => onSelect(f.path)}
+          >
+            <span className={`badge badge-${f.status}`} title={f.status}>
+              {FILE_STATUS_SYMBOL[f.status]}
+            </span>
+            <span className="file-path" title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}>
+              {node.name}
+            </span>
+            {outdated > 0 && (
+              <span className="thread-count outdated" title={`${outdated} outdated thread${outdated === 1 ? "" : "s"}`}>
+                {outdated}
+              </span>
+            )}
+            {count > 0 && (
+              <span className="thread-count" title={`${count} open thread${count === 1 ? "" : "s"}`}>
+                {count}
+              </span>
+            )}
+          </li>,
+        );
+      }
+    }
+    return out;
   }
 
   return (
     <ul className="file-tree">
       {groups.map((group) => {
-        const isCollapsed = group.name !== null && collapsed.has(group.name);
+        const groupKey = group.name ?? "__all";
+        const isSectionCollapsed = group.name !== null && collapsedSections.has(group.name);
         const isFiltered = group.name !== null && sectionFilter === group.name;
-        const hidden = sectionFilter !== null && group.name !== sectionFilter;
+        const hiddenByFilter = sectionFilter !== null && group.name !== sectionFilter;
         return (
-          <Fragment key={group.name ?? "__all"}>
+          <Fragment key={groupKey}>
             {group.name && (
-              <li className={`file-tree-section${isFiltered ? " filtered" : ""}`} onClick={() => toggleSection(group.name!)}>
-                <span className="collapse-caret">{isCollapsed ? "▸" : "▾"}</span>
+              <li className={`file-tree-section${isFiltered ? " filtered" : ""}`} onClick={() => toggle(setCollapsedSections, group.name!)}>
+                <span className="collapse-caret">{isSectionCollapsed ? "▸" : "▾"}</span>
                 {group.name}
                 <span className="section-count">{group.files.length}</span>
                 <button
@@ -85,7 +124,7 @@ export function FileTree({
                 </button>
               </li>
             )}
-            {!isCollapsed && !hidden && group.files.map(fileItem)}
+            {!isSectionCollapsed && !hiddenByFilter && renderNodes(buildFileTree(group.files), 0, groupKey)}
           </Fragment>
         );
       })}
