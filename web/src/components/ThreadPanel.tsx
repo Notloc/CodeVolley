@@ -34,7 +34,12 @@ export function ThreadPanel({
   const [override, setOverride] = useState<boolean | null>(null);
   const expanded = override ?? thread.status === "open";
 
-  const availableTransitions = STATUS_TRANSITIONS.filter((t) => t.status !== thread.status);
+  // From open you can resolve or mark won't-fix; from a closed state (resolved
+  // or wontfix) the only move is reopen — no jumping resolved <-> wontfix.
+  const availableTransitions =
+    thread.status === "open"
+      ? STATUS_TRANSITIONS.filter((t) => t.status !== "open")
+      : STATUS_TRANSITIONS.filter((t) => t.status === "open");
 
   // The thread is flagged as awaiting Claude (server-tracked: set by user
   // activity, cleared when Claude replies or acknowledges) and a Claude session

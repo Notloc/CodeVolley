@@ -158,12 +158,12 @@ export function DiffFile({
           </div>
         </div>
         {isComposerAt(row) && composer && (
-          <div className="full-row composer-row-wrapper">
+          <div className={`full-row composer-row-wrapper kind-${row.kind}`}>
             <ThreadComposer onCancel={() => setComposer(null)} onSubmit={(input) => submitThread(composer.side, composer.line, input)} />
           </div>
         )}
         {rowThreads.map((t) => (
-          <div key={t.id} className="full-row thread-row">
+          <div key={t.id} className={`full-row thread-row kind-${row.kind}`}>
             <ThreadPanel reviewId={reviewId} thread={t} claudeWorking={claudeWorking} onChanged={onChanged} />
           </div>
         ))}

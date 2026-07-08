@@ -109,6 +109,8 @@ By default the file tree lists every changed file flat. You can group it into na
 - **`pattern`** with no wildcard is a directory/exact prefix (`src/db/` matches `src/db/foo.ts`, not `src/database.ts`). With wildcards it's a glob: `*` stays within a path segment, `**` spans separators (`**/*.vue`, `src/db/**`).
 - Does nothing until configured. It's fetched once when the UI loads, so **refresh the page** after editing. Lives under the gitignored `.codevolley/`, so it's local per-developer — un-ignore just that file if you want to share it with the team.
 
+Once sections are configured, each header in the file tree can be **collapsed** (click the header) and **soloed** (click the eye icon to filter the tree and diff view down to just that section; click again to clear).
+
 ## Development
 
 ```bash

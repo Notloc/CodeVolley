@@ -232,8 +232,10 @@ button:disabled { opacity: 0.5; cursor: default; }
 .file-tree li:hover { background: var(--bg-subtle); }
 .file-tree li.selected { background: color-mix(in srgb, currentColor 10%, transparent); }
 .file-tree li.file-tree-section {
-  display: block;
-  cursor: default;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
   font-size: 0.68rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -242,7 +244,22 @@ button:disabled { opacity: 0.5; cursor: default; }
   padding: 0.6rem 0.4rem 0.15rem;
 }
 .file-tree li.file-tree-section:first-child { padding-top: 0.2rem; }
-.file-tree li.file-tree-section:hover { background: none; }
+.file-tree li.file-tree-section .section-count { margin-left: auto; opacity: 0.7; }
+.file-tree li.file-tree-section.filtered { color: var(--accent); }
+.section-filter {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0 0 0 0.15rem;
+  display: inline-flex;
+  align-items: center;
+  line-height: 0;
+  color: var(--text-muted);
+  opacity: 0.4;
+  cursor: pointer;
+}
+.section-filter:hover { opacity: 0.85; }
+.section-filter.active { opacity: 1; color: var(--accent); }
 
 /* Section grouping in the diff stack (mirrors the file tree). */
 .stack-group { display: flex; flex-direction: column; gap: 1.5rem; }
@@ -353,7 +370,11 @@ button:disabled { opacity: 0.5; cursor: default; }
   width: 100cqi;
   box-sizing: border-box;
 }
-.composer-row-wrapper, .thread-row { padding: 0.5rem; background: var(--bg-subtle); }
+/* Band behind an inline comment matches its anchored line's diff tint. */
+.composer-row-wrapper, .thread-row { padding: 0.5rem 1.5rem; background: var(--bg-subtle); }
+.composer-row-wrapper.kind-unchanged, .thread-row.kind-unchanged { background: var(--bg-subtle); }
+.composer-row-wrapper.kind-added, .thread-row.kind-added { background: color-mix(in srgb, #2a8a3e 14%, transparent); }
+.composer-row-wrapper.kind-removed, .thread-row.kind-removed { background: color-mix(in srgb, #b32323 14%, transparent); }
 
 /* Collapsed run of unchanged lines — dig in 10 at a time from either end
    (shift-click a button to reveal the whole run). */

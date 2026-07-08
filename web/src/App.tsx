@@ -103,6 +103,7 @@ function ReviewView({ id }: { id: string }) {
   const [listening, setListening] = useState<boolean | null>(null);
   const [online, setOnline] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
+  const [sectionFilter, setSectionFilter] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
     api.getReview(id).then(setReview).catch((err) => setError(String(err.message ?? err)));
@@ -151,6 +152,9 @@ function ReviewView({ id }: { id: string }) {
   // Group files into workspace sections (flat single group when unconfigured).
   // The stack renders in the same grouped order so it matches the tree.
   const groups = groupFiles(revision.files, sections);
+  // When a section is soloed via its eye toggle, the stack shows only it.
+  const stackGroups = sectionFilter ? groups.filter((g) => g.name === sectionFilter) : groups;
+  const toggleSectionFilter = (name: string) => setSectionFilter((prev) => (prev === name ? null : name));
 
   // Claude is actively working this review (online session, not parked in a
   // wait) — drives the "replying…" spinner on threads awaiting a reply.
@@ -179,12 +183,19 @@ function ReviewView({ id }: { id: string }) {
       <ReviewActions reviewId={id} status={review.status} notes={review.notes} listening={listening} onChanged={refresh} />
 
       <div className="review-body">
-        <FileTree groups={groups} threads={review.threads} selectedPath={selectedPath} onSelect={scrollToFile} />
+        <FileTree
+          groups={groups}
+          threads={review.threads}
+          selectedPath={selectedPath}
+          onSelect={scrollToFile}
+          sectionFilter={sectionFilter}
+          onFilterSection={toggleSectionFilter}
+        />
         {revision.files.length === 0 ? (
           <div className="empty">No files changed.</div>
         ) : (
           <div className="diff-stack">
-            {groups.map((group) => (
+            {stackGroups.map((group) => (
               <div key={group.name ?? "__all"} className="stack-group">
                 {group.name && <div className="stack-section">{group.name}</div>}
                 {group.files.map((f) => (
