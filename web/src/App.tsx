@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import * as api from "./api.js";
 import { DiffFile } from "./components/DiffFile.js";
 import { FileTree } from "./components/FileTree.js";
@@ -73,6 +73,9 @@ function FileSection({
   file: RevisionFile;
   threads: Thread[];
   claudeWorking: boolean;
+  // Change signature for this file's threads — not read here, but compared by
+  // the memo wrapper below so unaffected files skip re-rendering entirely.
+  threadsSig: string;
   onChanged: () => void;
 }) {
   const [collapsed, setCollapsed] = useState(false);
@@ -126,6 +129,25 @@ function FileSection({
     </section>
   );
 }
+
+// Every review refresh produces fresh object identities for all files and
+// threads, so plain memo would never skip. Compare by value instead: a file
+// section only re-renders when the revision, the file itself, or its own
+// threads (via threadsSig) actually changed — a comment on file A no longer
+// re-renders (and re-diffs) files B through Z.
+const MemoFileSection = memo(
+  FileSection,
+  (prev, next) =>
+    prev.reviewId === next.reviewId &&
+    prev.revisionNumber === next.revisionNumber &&
+    prev.claudeWorking === next.claudeWorking &&
+    prev.onChanged === next.onChanged &&
+    prev.file.path === next.file.path &&
+    prev.file.status === next.file.status &&
+    prev.file.oldPath === next.file.oldPath &&
+    prev.file.contentHash === next.file.contentHash &&
+    prev.threadsSig === next.threadsSig,
+);
 
 function ReviewView({ id }: { id: string }) {
   const [review, setReview] = useState<Review | null>(null);
@@ -208,6 +230,20 @@ function ReviewView({ id }: { id: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, review !== null]);
 
+  // Per-file thread lists plus a change signature, computed once per fetch.
+  // The signature feeds MemoFileSection's comparator so only files whose
+  // threads actually changed re-render on a refresh.
+  const fileThreads = useMemo(() => {
+    const map = new Map<string, { threads: Thread[]; sig: string }>();
+    if (!review) return map;
+    const revision = review.revisions[review.revisions.length - 1];
+    for (const f of revision.files) {
+      const threads = review.threads.filter((t) => t.anchor.path === f.path || t.currentAnchor.path === f.path);
+      map.set(f.path, { threads, sig: JSON.stringify(threads) });
+    }
+    return map;
+  }, [review]);
+
   if (error) return <div className="error">Failed to load review: {error}</div>;
   if (!review) return <div className="loading">Loading review…</div>;
 
@@ -278,17 +314,21 @@ function ReviewView({ id }: { id: string }) {
             {stackGroups.map((group) => (
               <div key={group.name ?? "__all"} className="stack-group">
                 {group.name && <div className="stack-section">{group.name}</div>}
-                {orderedFiles(group.files).map((f) => (
-                  <FileSection
-                    key={f.path}
-                    reviewId={id}
-                    revisionNumber={revision.number}
-                    file={f}
-                    threads={review.threads.filter((t) => t.anchor.path === f.path || t.currentAnchor.path === f.path)}
-                    claudeWorking={claudeWorking}
-                    onChanged={refresh}
-                  />
-                ))}
+                {orderedFiles(group.files).map((f) => {
+                  const ft = fileThreads.get(f.path) ?? { threads: [], sig: "[]" };
+                  return (
+                    <MemoFileSection
+                      key={f.path}
+                      reviewId={id}
+                      revisionNumber={revision.number}
+                      file={f}
+                      threads={ft.threads}
+                      threadsSig={ft.sig}
+                      claudeWorking={claudeWorking}
+                      onChanged={refresh}
+                    />
+                  );
+                })}
               </div>
             ))}
           </div>

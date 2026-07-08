@@ -91,6 +91,11 @@ export const RevisionFileSchema = z.object({
   path: z.string(),
   status: FileStatusSchema,
   oldPath: z.string().optional(),
+  // Hash of the file's old+new content, stable across revisions when the
+  // file didn't actually change — lets the UI skip refetching/re-diffing
+  // untouched files on submit_revision. Optional: absent on revisions
+  // persisted before this field existed.
+  contentHash: z.string().optional(),
 });
 export type RevisionFile = z.infer<typeof RevisionFileSchema>;
 

@@ -68,7 +68,11 @@ async function serveStaticAsset(requestPath: string): Promise<Response | null> {
   try {
     const data = await readFile(filePath);
     const contentType = MIME_TYPES[path.extname(filePath)] ?? "application/octet-stream";
-    return new Response(new Uint8Array(data), { headers: { "Content-Type": contentType } });
+    // Vite fingerprints everything under /assets, so those are safe to cache
+    // forever; index.html (which points at the current fingerprints) must be
+    // revalidated or browsers keep loading stale bundles after a rebuild.
+    const cacheControl = cleanPath.startsWith("/assets/") ? "public, max-age=31536000, immutable" : "no-cache";
+    return new Response(new Uint8Array(data), { headers: { "Content-Type": contentType, "Cache-Control": cacheControl } });
   } catch {
     return null;
   }

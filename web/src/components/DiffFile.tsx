@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api.js";
 import { buildUnifiedRows, type UnifiedRow } from "../diffRows.js";
 import type { FileContent, RevisionFile, Severity, Side, Thread } from "../types.js";
@@ -42,12 +42,25 @@ export function DiffFile({
   // Keyed by a gap's first row index (stable for a given file's diff).
   const [reveals, setReveals] = useState<Map<number, Reveal>>(new Map());
 
+  // Refetch keyed on the file's content hash, not the revision number: a
+  // submit_revision bumps the revision for every file, but only files whose
+  // content actually changed should refetch/re-diff (and lose their expander
+  // and composer state). Falls back to the revision number for reviews
+  // persisted before the daemon computed hashes.
+  const contentKey = file.contentHash ?? `rev-${revisionNumber}`;
+  const latestRevision = useRef(revisionNumber);
+  latestRevision.current = revisionNumber;
   useEffect(() => {
     setContent(null);
     setComposer(null);
     setReveals(new Map());
-    api.getFileContent(reviewId, revisionNumber, file.path).then(setContent);
-  }, [reviewId, revisionNumber, file.path]);
+    api.getFileContent(reviewId, latestRevision.current, file.path).then(setContent);
+  }, [reviewId, file.path, contentKey]);
+
+  // Diffing is the expensive part of a render — memoize on the fetched
+  // content so live-review refreshes (new comments etc.) don't re-diff
+  // every mounted file.
+  const rows = useMemo(() => (content ? buildUnifiedRows(content.oldContent ?? "", content.newContent ?? "") : []), [content]);
 
   // Reveal more of a collapsed gap: `STEP` lines from one end, or (shift-click)
   // the whole thing. `len` is the gap's total hidden length.
@@ -70,8 +83,6 @@ export function DiffFile({
     return <div className="diff-file binary-file">Binary file changed — no diff available.</div>;
   }
   if (!content) return <div className="diff-file loading">Loading diff…</div>;
-
-  const rows = buildUnifiedRows(content.oldContent ?? "", content.newContent ?? "");
 
   // Only threads anchored (successfully, non-outdated) to the revision
   // currently on screen can be placed inline at a real line in `rows` —

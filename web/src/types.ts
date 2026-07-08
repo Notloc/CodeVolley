@@ -51,6 +51,9 @@ export interface RevisionFile {
   path: string;
   status: FileStatus;
   oldPath?: string;
+  // Stable across revisions when the file's content didn't change; absent on
+  // revisions persisted before the daemon computed it.
+  contentHash?: string;
 }
 
 export interface Revision {
