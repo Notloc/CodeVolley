@@ -79,6 +79,18 @@ claude mcp add codevolley -- codevolley-mcp
 
 The daemon must be running for the tools to work; if it's down, a tool call fails with an error naming `codevolley serve`, and starting it unblocks the next call — no session restart needed.
 
+## Reviewer skill
+
+The repo ships the reviewer-side Claude skill at [`claude_skill/interactive-review/`](claude_skill/interactive-review) — it drives the review (what to look for, how findings become threads, the reply/fix/resolve loop) on top of the MCP tools.
+
+Install it into Claude Code by copying or symlinking that folder into a skills directory — `~/.claude/skills/` (personal) or `<repo>/.claude/skills/` (project):
+
+```bash
+ln -s /absolute/path/to/CodeVolley/claude_skill/interactive-review ~/.claude/skills/interactive-review
+```
+
+Then, with the daemon running and the `codevolley` MCP server connected, start a session with `/interactive-review` (optionally `/interactive-review <branch>`, or `/interactive-review diff` for uncommitted changes only) or just ask Claude to "review this with me".
+
 ## Typical flow
 
 1. Start the daemon in your repo (`npm run serve`), keep the browser open at `http://localhost:4877`.
