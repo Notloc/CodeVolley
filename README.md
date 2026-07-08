@@ -90,6 +90,25 @@ The daemon must be running for the tools to work; if it's down, a tool call fail
 
 Reviews are stored as JSON under **`.codevolley/`** at the repo root. It's gitignored by default — treat it as local, per-developer state.
 
+## Customizing the file tree (optional)
+
+By default the file tree lists every changed file flat. You can group it into named sections per workspace by adding **`.codevolley/config.json`** to the repo you review:
+
+```json
+{
+  "sections": [
+    { "name": "Database", "pattern": "src/db/",    "priority": 1 },
+    { "name": "Java",     "pattern": "src/com/",    "priority": 2 },
+    { "name": "Vue",      "pattern": "**/*.vue",    "priority": 3 },
+    { "name": "Tests",    "pattern": "**/*.test.*", "priority": 4 }
+  ]
+}
+```
+
+- **`priority`** orders sections ascending — `1` shows first. Each file lands in the first section it matches; anything unmatched falls into a trailing **Other** group. The file tree and the diff stack both follow this grouping/order.
+- **`pattern`** with no wildcard is a directory/exact prefix (`src/db/` matches `src/db/foo.ts`, not `src/database.ts`). With wildcards it's a glob: `*` stays within a path segment, `**` spans separators (`**/*.vue`, `src/db/**`).
+- Does nothing until configured. It's fetched once when the UI loads, so **refresh the page** after editing. Lives under the gitignored `.codevolley/`, so it's local per-developer — un-ignore just that file if you want to share it with the team.
+
 ## Development
 
 ```bash

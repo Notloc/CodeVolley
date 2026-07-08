@@ -40,6 +40,7 @@ import {
   submitRevision,
   waitForActivity,
 } from "./reviews-service.js";
+import { readWorkspaceConfig } from "./persistence.js";
 import { recordHeartbeat, waitForReviewActivity } from "./waiters.js";
 
 // The daemon's cwd is the *reviewed* repo, not CodeVolley's own install
@@ -224,6 +225,8 @@ export function createApp(repoRoot: string, port: number): Hono {
     if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
     return handled(c, () => getFileContent(repoRoot, parsed.data));
   });
+
+  app.get("/api/config", (c) => handled(c, () => readWorkspaceConfig(repoRoot)));
 
   app.get("/api/reviews/:idOrTitle/presence", (c) => handled(c, () => getPresence(repoRoot, c.req.param("idOrTitle"))));
 

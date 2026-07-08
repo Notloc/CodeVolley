@@ -5,6 +5,21 @@ import { CommentSchema, EventSchema, NoteKindSchema, RevisionFileSchema, ReviewS
 // The MCP adapter proxies each tool call to these; keeping them as a shared
 // schema module means adapter and daemon can never drift on the wire shape.
 
+// Per-workspace UI config (lives at .codevolley/config.json). Optional — the
+// UI behaves normally when absent. Sections group the file tree by path
+// pattern, ordered by priority (ascending: 1 shows first).
+export const WorkspaceSectionSchema = z.object({
+  name: z.string().min(1),
+  pattern: z.string().min(1),
+  priority: z.number(),
+});
+export type WorkspaceSection = z.infer<typeof WorkspaceSectionSchema>;
+
+export const WorkspaceConfigSchema = z.object({
+  sections: z.array(WorkspaceSectionSchema).default([]),
+});
+export type WorkspaceConfig = z.infer<typeof WorkspaceConfigSchema>;
+
 export const ReviewSummarySchema = z.object({
   id: z.string(),
   title: z.string(),

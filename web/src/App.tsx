@@ -4,6 +4,7 @@ import { DiffFile } from "./components/DiffFile.js";
 import { FileTree } from "./components/FileTree.js";
 import { ReviewActions } from "./components/ReviewActions.js";
 import { ReviewPicker } from "./components/ReviewPicker.js";
+import { groupFiles, type Section } from "./sections.js";
 import type { Review, RevisionFile, Thread } from "./types.js";
 
 function reviewIdFromPath(): string | null {
@@ -101,12 +102,19 @@ function ReviewView({ id }: { id: string }) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [listening, setListening] = useState<boolean | null>(null);
   const [online, setOnline] = useState(false);
+  const [sections, setSections] = useState<Section[]>([]);
 
   const refresh = useCallback(() => {
     api.getReview(id).then(setReview).catch((err) => setError(String(err.message ?? err)));
   }, [id]);
 
   useEffect(refresh, [refresh]);
+
+  // Per-workspace file-tree sections (config.json). Fetched once; empty until
+  // configured, in which case the tree/stack render flat as before.
+  useEffect(() => {
+    api.getConfig().then((c) => setSections(c.sections)).catch(() => setSections([]));
+  }, []);
 
   // Live updates (§5 "Liveness"): any event on this review means our local
   // snapshot is stale — a full refetch is simple and correct, and get_review
@@ -140,6 +148,10 @@ function ReviewView({ id }: { id: string }) {
 
   const revision = review.revisions[review.revisions.length - 1];
 
+  // Group files into workspace sections (flat single group when unconfigured).
+  // The stack renders in the same grouped order so it matches the tree.
+  const groups = groupFiles(revision.files, sections);
+
   // Claude is actively working this review (online session, not parked in a
   // wait) — drives the "replying…" spinner on threads awaiting a reply.
   const claudeWorking = review.status === "open" && online && listening === false;
@@ -167,21 +179,26 @@ function ReviewView({ id }: { id: string }) {
       <ReviewActions reviewId={id} status={review.status} notes={review.notes} listening={listening} onChanged={refresh} />
 
       <div className="review-body">
-        <FileTree files={revision.files} threads={review.threads} selectedPath={selectedPath} onSelect={scrollToFile} />
+        <FileTree groups={groups} threads={review.threads} selectedPath={selectedPath} onSelect={scrollToFile} />
         {revision.files.length === 0 ? (
           <div className="empty">No files changed.</div>
         ) : (
           <div className="diff-stack">
-            {revision.files.map((f) => (
-              <FileSection
-                key={f.path}
-                reviewId={id}
-                revisionNumber={revision.number}
-                file={f}
-                threads={review.threads.filter((t) => t.anchor.path === f.path || t.currentAnchor.path === f.path)}
-                claudeWorking={claudeWorking}
-                onChanged={refresh}
-              />
+            {groups.map((group) => (
+              <div key={group.name ?? "__all"} className="stack-group">
+                {group.name && <div className="stack-section">{group.name}</div>}
+                {group.files.map((f) => (
+                  <FileSection
+                    key={f.path}
+                    reviewId={id}
+                    revisionNumber={revision.number}
+                    file={f}
+                    threads={review.threads.filter((t) => t.anchor.path === f.path || t.currentAnchor.path === f.path)}
+                    claudeWorking={claudeWorking}
+                    onChanged={refresh}
+                  />
+                ))}
+              </div>
             ))}
           </div>
         )}

@@ -179,23 +179,25 @@ export function DiffFile({
             renderRow(item.index)
           ) : (
             <div key={`gap-${item.key}`} className="full-row expander-row">
-              <button
-                className="expander-btn"
-                title="Show 10 more lines (shift-click for all)"
-                onClick={(ev) => digGap(item.key, item.len, "top", ev.shiftKey)}
-              >
-                ↓ 10
-              </button>
+              <div className="expander-btns">
+                <button
+                  className="expander-btn"
+                  title="Show 10 more lines (shift-click for all)"
+                  onClick={(ev) => digGap(item.key, item.len, "top", ev.shiftKey)}
+                >
+                  ↓ 10
+                </button>
+                <button
+                  className="expander-btn"
+                  title="Show 10 more lines (shift-click for all)"
+                  onClick={(ev) => digGap(item.key, item.len, "bottom", ev.shiftKey)}
+                >
+                  ↑ 10
+                </button>
+              </div>
               <span className="expander-label">
                 {item.hidden} unchanged {item.hidden === 1 ? "line" : "lines"}
               </span>
-              <button
-                className="expander-btn"
-                title="Show 10 more lines (shift-click for all)"
-                onClick={(ev) => digGap(item.key, item.len, "bottom", ev.shiftKey)}
-              >
-                ↑ 10
-              </button>
             </div>
           ),
         )}

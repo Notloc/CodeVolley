@@ -1,3 +1,4 @@
+import type { Section } from "./sections.js";
 import type { FileContent, Review, ReviewEvent, ReviewSummary, Severity, Side, ThreadStatus } from "./types.js";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -15,6 +16,10 @@ const jsonPost = (body: unknown): RequestInit => ({
 
 export function listReviews(): Promise<ReviewSummary[]> {
   return request(`/internal/reviews`);
+}
+
+export function getConfig(): Promise<{ sections: Section[] }> {
+  return request(`/api/config`);
 }
 
 export function getReview(idOrTitle: string): Promise<Review> {

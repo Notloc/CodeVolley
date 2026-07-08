@@ -231,6 +231,30 @@ button:disabled { opacity: 0.5; cursor: default; }
 }
 .file-tree li:hover { background: var(--bg-subtle); }
 .file-tree li.selected { background: color-mix(in srgb, currentColor 10%, transparent); }
+.file-tree li.file-tree-section {
+  display: block;
+  cursor: default;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding: 0.6rem 0.4rem 0.15rem;
+}
+.file-tree li.file-tree-section:first-child { padding-top: 0.2rem; }
+.file-tree li.file-tree-section:hover { background: none; }
+
+/* Section grouping in the diff stack (mirrors the file tree). */
+.stack-group { display: flex; flex-direction: column; gap: 1.5rem; }
+.stack-section {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  color: var(--text-muted);
+  padding-bottom: 0.3rem;
+  border-bottom: 1px solid var(--border);
+}
 .file-tree .file-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .file-tree .thread-count {
   background: #b8860b;
@@ -344,7 +368,8 @@ button:disabled { opacity: 0.5; cursor: default; }
   font-size: 0.78rem;
   color: var(--text-muted);
 }
-.expander-label { flex: 1; text-align: center; }
+.expander-btns { display: flex; flex-direction: column; gap: 0.2rem; }
+.expander-label { color: var(--text-muted); }
 .expander-btn {
   font-family: ui-monospace, monospace;
   font-size: 0.75rem;

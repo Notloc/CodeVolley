@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { type WorkspaceConfig, WorkspaceConfigSchema } from "../shared/internal-api.js";
 import {
   type ReviewIndex,
   ReviewIndexSchema,
@@ -11,6 +12,24 @@ import { notifyReviewActivity } from "./waiters.js";
 
 function codevolleyDir(repoRoot: string): string {
   return path.join(repoRoot, ".codevolley");
+}
+
+// Optional per-workspace UI config. Missing file → empty config; a malformed
+// one is logged and treated as empty so it never breaks the UI.
+export async function readWorkspaceConfig(repoRoot: string): Promise<WorkspaceConfig> {
+  const file = path.join(codevolleyDir(repoRoot), "config.json");
+  let raw: string;
+  try {
+    raw = await readFile(file, "utf8");
+  } catch {
+    return { sections: [] };
+  }
+  try {
+    return WorkspaceConfigSchema.parse(JSON.parse(raw));
+  } catch (err) {
+    console.error(`codevolley: ignoring invalid .codevolley/config.json — ${(err as Error).message}`);
+    return { sections: [] };
+  }
 }
 
 function reviewsDir(repoRoot: string): string {
