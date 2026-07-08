@@ -127,6 +127,25 @@ export const WaitForActivityResponseSchema = z.object({
 });
 export type WaitForActivityResponse = z.infer<typeof WaitForActivityResponseSchema>;
 
+// UI-only: full file content is deliberately excluded from get_review's
+// response (RevisionFileSchema has no content field — see shared/types.ts)
+// since Claude never needs it. The browser fetches it separately, per file.
+export const GetFileContentRequestSchema = z.object({
+  review: z.string().min(1),
+  revision: z.number().int().positive(),
+  path: z.string().min(1),
+});
+export type GetFileContentRequest = z.infer<typeof GetFileContentRequestSchema>;
+
+export const GetFileContentResponseSchema = z.object({
+  path: z.string(),
+  status: RevisionFileSchema.shape.status,
+  oldPath: z.string().optional(),
+  oldContent: z.string().nullable(),
+  newContent: z.string().nullable(),
+});
+export type GetFileContentResponse = z.infer<typeof GetFileContentResponseSchema>;
+
 export const SubmitRevisionRequestSchema = z.object({
   review: z.string().min(1),
   message: z.string(),

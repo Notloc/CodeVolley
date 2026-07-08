@@ -8,6 +8,8 @@ import {
   type CreateThreadResponse,
   type EditCommentRequest,
   type EditCommentResponse,
+  type GetFileContentRequest,
+  type GetFileContentResponse,
   type GetReviewRequest,
   type PostNoteRequest,
   type PostNoteResponse,
@@ -32,11 +34,11 @@ import { nextCommentId, nextNoteId, nextThreadId } from "./ids.js";
 import { readIndex, readReview, resolveReviewId, writeReview } from "./persistence.js";
 import { findAnchorLine } from "./reanchor.js";
 import { projectReview, type StoredReview, type StoredRevision, type StoredThread } from "./storage-types.js";
-import { waitForReviewActivity } from "./waiters.js";
+import { isListening, setListening, waitForReviewActivity } from "./waiters.js";
 
 export { GitError };
 
-async function resolveAndReadReview(repoRoot: string, idOrTitle: string): Promise<StoredReview> {
+export async function resolveAndReadReview(repoRoot: string, idOrTitle: string): Promise<StoredReview> {
   const id = await resolveReviewId(repoRoot, idOrTitle);
   if (!id) {
     const index = await readIndex(repoRoot);
@@ -329,21 +331,34 @@ export async function waitForActivity(repoRoot: string, req: WaitForActivityRequ
     );
   }
 
-  let review = initial;
-  for (;;) {
-    const userEvents = review.events.filter((e) => e.seq > req.after && e.actor === "user");
-    if (userEvents.length > 0) {
-      return { events: userEvents, lastSeq: review.lastSeq, timedOut: false };
-    }
+  setListening(initial.id, true);
+  try {
+    let review = initial;
+    for (;;) {
+      const userEvents = review.events.filter((e) => e.seq > req.after && e.actor === "user");
+      if (userEvents.length > 0) {
+        return { events: userEvents, lastSeq: review.lastSeq, timedOut: false };
+      }
 
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) {
-      return { events: [], lastSeq: review.lastSeq, timedOut: true };
-    }
+      const remainingMs = deadline - Date.now();
+      if (remainingMs <= 0) {
+        return { events: [], lastSeq: review.lastSeq, timedOut: true };
+      }
 
-    await waitForReviewActivity(review.id, remainingMs);
-    review = await resolveAndReadReview(repoRoot, req.review);
+      await waitForReviewActivity(review.id, remainingMs);
+      review = await resolveAndReadReview(repoRoot, req.review);
+    }
+  } finally {
+    setListening(initial.id, false);
   }
+}
+
+// Presence (design doc §5) — whether a wait_for_activity call is currently
+// parked on this review. Resolves id-or-title first since `isListening` is
+// keyed by canonical review id.
+export async function getPresence(repoRoot: string, reviewIdOrTitle: string): Promise<{ listening: boolean }> {
+  const review = await resolveAndReadReview(repoRoot, reviewIdOrTitle);
+  return { listening: isListening(review.id) };
 }
 
 // Captures a new immutable revision and re-anchors open threads (design doc
@@ -411,4 +426,37 @@ export async function submitRevision(repoRoot: string, req: SubmitRevisionReques
     reanchored,
     outdated,
   };
+}
+
+export async function getFileContent(repoRoot: string, req: GetFileContentRequest): Promise<GetFileContentResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+
+  const revision = review.revisions.find((r) => r.number === req.revision);
+  if (!revision) {
+    const known = review.revisions.map((r) => r.number).join(", ") || "(none)";
+    throw new NotFoundError(`Revision ${req.revision} not found in review "${review.id}". Known revisions: ${known}`);
+  }
+
+  const file = revision.files.find((f) => f.path === req.path);
+  if (!file) {
+    const known = revision.files.map((f) => f.path).join(", ") || "(none)";
+    throw new NotFoundError(`Path "${req.path}" is not in revision ${req.revision}. Valid paths: ${known}`);
+  }
+
+  return {
+    path: file.path,
+    status: file.status,
+    oldPath: file.oldPath,
+    oldContent: file.oldContent,
+    newContent: file.newContent,
+  };
+}
+
+// UI-only signal (the "Done for now" button, §5) — no MCP tool exposes
+// this; Claude just observes the user_done event via wait_for_activity.
+export async function markUserDone(repoRoot: string, reviewIdOrTitle: string): Promise<{ review: string }> {
+  const review = await resolveAndReadReview(repoRoot, reviewIdOrTitle);
+  appendEvent(review, "user", "user_done", {});
+  await writeReview(repoRoot, review);
+  return { review: review.id };
 }

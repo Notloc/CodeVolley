@@ -25,3 +25,17 @@ export function waitForReviewActivity(reviewId: string, timeoutMs: number): Prom
     emitter.once(reviewId, onActivity);
   });
 }
+
+// Presence (design doc §5): true while a wait_for_activity call is
+// currently parked on this review — the UI shows "Claude is listening" vs
+// "Claude is working" off this.
+const listening = new Set<string>();
+
+export function setListening(reviewId: string, isListening: boolean): void {
+  if (isListening) listening.add(reviewId);
+  else listening.delete(reviewId);
+}
+
+export function isListening(reviewId: string): boolean {
+  return listening.has(reviewId);
+}
