@@ -1,4 +1,4 @@
-import type { FileContent, Review, ReviewEvent, Severity, Side, ThreadStatus } from "./types.js";
+import type { FileContent, Review, ReviewEvent, ReviewSummary, Severity, Side, ThreadStatus } from "./types.js";
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, init);
@@ -12,6 +12,10 @@ const jsonPost = (body: unknown): RequestInit => ({
   headers: { "Content-Type": "application/json" },
   body: JSON.stringify(body),
 });
+
+export function listReviews(): Promise<ReviewSummary[]> {
+  return request(`/internal/reviews`);
+}
 
 export function getReview(idOrTitle: string): Promise<Review> {
   return request(`/internal/reviews/${encodeURIComponent(idOrTitle)}`);

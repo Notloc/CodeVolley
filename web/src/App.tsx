@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { DiffFile } from "./components/DiffFile.js";
 import { FileTree } from "./components/FileTree.js";
 import { ReviewActions } from "./components/ReviewActions.js";
+import { ReviewPicker } from "./components/ReviewPicker.js";
 import type { Review } from "./types.js";
 
 function reviewIdFromPath(): string | null {
@@ -52,6 +53,9 @@ function ReviewView({ id }: { id: string }) {
 
   return (
     <div className="review">
+      <a className="back-link" href="/">
+        ← All reviews
+      </a>
       <header>
         <h1>{review.title}</h1>
         <span className={`status status-${review.status}`}>{review.status}</span>
@@ -98,7 +102,7 @@ export function App() {
     return (
       <div className="landing">
         <h1>CodeVolley</h1>
-        <p>No review selected. Open a review's URL to view it here.</p>
+        <ReviewPicker />
       </div>
     );
   }

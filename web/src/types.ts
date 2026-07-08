@@ -93,6 +93,13 @@ export interface ReviewEvent {
   payload: Record<string, unknown>;
 }
 
+export interface ReviewSummary {
+  id: string;
+  title: string;
+  status: ReviewStatus;
+  createdAt: string;
+}
+
 export interface FileContent {
   path: string;
   status: FileStatus;

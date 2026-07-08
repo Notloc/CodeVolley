@@ -11,6 +11,7 @@ import {
   type GetFileContentRequest,
   type GetFileContentResponse,
   type GetReviewRequest,
+  type ListReviewsResponse,
   type PostNoteRequest,
   type PostNoteResponse,
   type ReopenReviewRequest,
@@ -120,6 +121,13 @@ export async function createReview(
 }
 
 export type GetReviewResult = { ok: true; review: Review } | { ok: false; error: string };
+
+// The multi-review picker (design doc §5): every review persisted under
+// .codevolley/, newest first.
+export async function listReviews(repoRoot: string): Promise<ListReviewsResponse> {
+  const index = await readIndex(repoRoot);
+  return [...index].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
 
 export async function getReview(repoRoot: string, req: GetReviewRequest): Promise<GetReviewResult> {
   const id = await resolveReviewId(repoRoot, req.review);

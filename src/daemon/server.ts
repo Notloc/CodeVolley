@@ -28,6 +28,7 @@ import {
   getFileContent,
   getPresence,
   getReview,
+  listReviews,
   markUserDone,
   postNote,
   reopenReview,
@@ -147,6 +148,8 @@ export function createApp(repoRoot: string, port: number): Hono {
   const app = new Hono();
 
   app.get("/health", (c) => c.json({ ok: true }));
+
+  app.get("/internal/reviews", (c) => handled(c, () => listReviews(repoRoot)));
 
   app.post("/internal/reviews", async (c) => {
     const parsed = CreateReviewRequestSchema.safeParse(await c.req.json());

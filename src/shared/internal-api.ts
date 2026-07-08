@@ -5,6 +5,17 @@ import { CommentSchema, EventSchema, NoteKindSchema, RevisionFileSchema, ReviewS
 // The MCP adapter proxies each tool call to these; keeping them as a shared
 // schema module means adapter and daemon can never drift on the wire shape.
 
+export const ReviewSummarySchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: ReviewSchema.shape.status,
+  createdAt: z.string(),
+});
+export type ReviewSummary = z.infer<typeof ReviewSummarySchema>;
+
+export const ListReviewsResponseSchema = z.array(ReviewSummarySchema);
+export type ListReviewsResponse = z.infer<typeof ListReviewsResponseSchema>;
+
 export const CreateReviewRequestSchema = z.object({
   title: z.string().min(1),
   base: z.string().min(1),
