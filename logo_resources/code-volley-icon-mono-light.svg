@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="44 20 76 76" width="76" height="76">
+  <defs>
+    <mask id="seams">
+      <circle cx="82" cy="58" r="38" fill="#fff"></circle>
+      <g fill="none" stroke="#000" stroke-width="5" stroke-linecap="round">
+        <path d="M68 17 C 63 40 63 76 70 99"></path>
+        <path d="M88 17 C 83 40 83 76 90 99"></path>
+        <path d="M34 49 C 62 43 94 50 126 55"></path>
+        <path d="M34 64 C 62 58 94 65 126 70"></path>
+      </g>
+    </mask>
+  </defs>
+  <circle cx="82" cy="58" r="38" fill="#EDEFF4" mask="url(#seams)"></circle>
+</svg>

@@ -13,19 +13,26 @@ export function ThreadPanel({ reviewId, thread, onChanged }: { reviewId: string;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState("");
   const [busy, setBusy] = useState(false);
+  // `null` = follow status (resolved/wontfix collapse, open expands), so
+  // resolving a thread auto-collapses it until the user overrides by clicking.
+  const [override, setOverride] = useState<boolean | null>(null);
+  const expanded = override ?? thread.status === "open";
 
   const availableTransitions = STATUS_TRANSITIONS.filter((t) => t.status !== thread.status);
 
   return (
-    <div className={`thread-panel severity-${thread.severity} status-${thread.status}`}>
-      <div className="thread-header">
-        <span className="severity-tag">{thread.severity}</span>
-        <strong>{thread.title}</strong>
+    <div className={`thread-panel severity-${thread.severity} status-${thread.status} ${expanded ? "" : "collapsed"}`}>
+      <div className="thread-header" onClick={() => setOverride(!expanded)}>
+        <span className="collapse-caret">{expanded ? "▾" : "▸"}</span>
         <span className="thread-status-tag">{thread.status}</span>
+        <strong>{thread.title}</strong>
+        <span className="severity-tag">{thread.severity}</span>
         {thread.anchorState === "outdated" && <span className="outdated-tag">outdated</span>}
       </div>
 
-      {thread.comments.map((c) => (
+      {expanded && (
+        <>
+          {thread.comments.map((c) => (
         <div key={c.id} className={`comment author-${c.author}`}>
           <div className="comment-meta">
             <span className="comment-author">{c.author}</span>
@@ -98,6 +105,8 @@ export function ThreadPanel({ reviewId, thread, onChanged }: { reviewId: string;
           ))}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }
