@@ -219,6 +219,9 @@ button:disabled { opacity: 0.5; cursor: default; }
   gap: 0.15rem;
   position: sticky;
   top: 1.5rem;
+  max-height: calc(100vh - 3rem);
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 .file-tree li {
   display: flex;

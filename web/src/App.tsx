@@ -163,7 +163,23 @@ function ReviewView({ id }: { id: string }) {
 
   const scrollToFile = (path: string) => {
     setSelectedPath(path);
-    document.getElementById(fileAnchorId(path))?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Lazily-mounting file sections grow from their placeholder height as we
+    // scroll past them, shifting the target — so a single smooth scroll lands
+    // short. Re-snap to the target until its position stops moving.
+    const id = fileAnchorId(path);
+    let lastTop = NaN;
+    let stable = 0;
+    const startedAt = Date.now();
+    const settle = () => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const top = Math.round(el.getBoundingClientRect().top);
+      if (Math.abs(top) > 2) el.scrollIntoView({ block: "start" });
+      stable = top === lastTop ? stable + 1 : 0;
+      lastTop = top;
+      if (stable < 3 && Date.now() - startedAt < 2500) setTimeout(settle, 60);
+    };
+    settle();
   };
 
   return (

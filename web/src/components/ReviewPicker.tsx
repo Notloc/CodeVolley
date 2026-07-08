@@ -16,8 +16,21 @@ export function ReviewPicker() {
   const [reviews, setReviews] = useState<ReviewSummary[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Poll so newly created reviews (and status changes) show up without a
+  // manual reload — there's no global event stream, only per-review SSE.
   useEffect(() => {
-    api.listReviews().then(setReviews).catch((err) => setError(String(err.message ?? err)));
+    let cancelled = false;
+    const load = () =>
+      api
+        .listReviews()
+        .then((r) => !cancelled && setReviews(r))
+        .catch((err) => !cancelled && setError(String(err.message ?? err)));
+    load();
+    const interval = setInterval(load, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, []);
 
   if (error) return <div className="error">Failed to load reviews: {error}</div>;
