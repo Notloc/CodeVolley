@@ -1,5 +1,6 @@
 import { useState } from "react";
 import * as api from "../api.js";
+import { ThreadRefText } from "./Markdown.js";
 import type { Note, ReviewStatus } from "../types.js";
 
 export function ReviewActions({
@@ -25,7 +26,11 @@ export function ReviewActions({
   return (
     <div className="review-actions">
       <div className="presence-line">
-        {latestProgress && <span className="progress-text">{latestProgress.body}</span>}
+        {latestProgress && (
+          <span className="progress-text">
+            <ThreadRefText>{latestProgress.body}</ThreadRefText>
+          </span>
+        )}
         {status === "open" && listening !== null && (
           <span className={`presence-indicator ${listening ? "listening" : "working"}`}>
             {listening ? "Claude is listening" : "Claude is working"}

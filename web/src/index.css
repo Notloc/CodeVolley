@@ -617,7 +617,8 @@ button:disabled { opacity: 0.5; cursor: default; }
 .author-user .comment-author { color: #6e9bf0; }
 .comment-body { line-height: 1.45; }
 
-/* Pending "Claude is replying…" placeholder in a thread awaiting a reply. */
+/* "Claude is thinking…" — the thread Claude has declared his current focus.
+   Active orange + spinner. */
 .comment.replying {
   display: flex;
   align-items: center;
@@ -626,6 +627,29 @@ button:disabled { opacity: 0.5; cursor: default; }
   color: #f0883e;
   font-size: 0.82rem;
   font-style: italic;
+}
+/* "Waiting for Claude…" — unhandled user input, but not his focus yet.
+   Deliberately passive: muted grey, gentle pulse instead of a spinner. */
+.comment.waiting {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-style: dashed;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-style: italic;
+}
+.wait-dot {
+  width: 0.55em;
+  height: 0.55em;
+  border-radius: 999px;
+  background: currentColor;
+  flex-shrink: 0;
+  animation: wait-pulse 2s ease-in-out infinite;
+}
+@keyframes wait-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 .spinner {
   display: inline-block;
@@ -647,6 +671,19 @@ button:disabled { opacity: 0.5; cursor: default; }
 .markdown li { margin: 0.15rem 0; }
 .markdown a { color: var(--accent); text-decoration: none; }
 .markdown a:hover { text-decoration: underline; }
+/* A t-x thread reference in comment/note text — reads as an inline chip,
+   hover shows the thread's title, click navigates to it. */
+a.thread-ref {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+  color: #8db4f6;
+  text-decoration: none;
+  padding: 0 0.25em;
+  border-radius: 4px;
+  background: color-mix(in srgb, #5b8def 14%, transparent);
+  border: 1px solid color-mix(in srgb, #5b8def 35%, transparent);
+}
+a.thread-ref:hover { background: color-mix(in srgb, #5b8def 26%, transparent); text-decoration: none; }
 .markdown code {
   font-family: ui-monospace, monospace;
   font-size: 0.85em;

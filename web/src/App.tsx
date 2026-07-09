@@ -3,6 +3,7 @@ import * as api from "./api.js";
 import { DiffFile } from "./components/DiffFile.js";
 import { FileTree } from "./components/FileTree.js";
 import { LazyMount } from "./components/LazyMount.js";
+import { ThreadRefContext, type ThreadRefHandler } from "./components/Markdown.js";
 import { OutdatedThreadsModal } from "./components/OutdatedThreadsModal.js";
 import { OverviewTab } from "./components/OverviewTab.js";
 import { ReviewActions } from "./components/ReviewActions.js";
@@ -137,6 +138,9 @@ function ReviewView({ id }: { id: string }) {
   // diffs survive tab flips — only the window scroll needs saving per tab.
   const [tab, setTab] = useState<Tab>("overview");
   const tabScroll = useRef<Record<Tab, number>>({ overview: 0, details: 0 });
+  // Overview in-feed focus target (card scroll + expand + flash) — lives here
+  // rather than in OverviewTab so thread refs in comment text can drive it.
+  const [overviewFocus, setOverviewFocus] = useState<{ id: string; nonce: number }>({ id: "", nonce: 0 });
   const [listening, setListening] = useState<boolean | null>(null);
   const [online, setOnline] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
@@ -215,6 +219,19 @@ function ReviewView({ id }: { id: string }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, review !== null, tab]);
+
+  // Stable handler for t-x thread references in comment text: the context
+  // value's identity never changes (a changing value would re-render every
+  // Markdown consumer and defeat MemoFileSection); behaviour reads the
+  // latest review/tab through this ref, reassigned each render below.
+  const threadRefImpl = useRef<ThreadRefHandler>({ open: () => {}, titleFor: () => undefined });
+  const threadRefHandler = useMemo<ThreadRefHandler>(
+    () => ({
+      open: (id) => threadRefImpl.current.open(id),
+      titleFor: (id) => threadRefImpl.current.titleFor(id),
+    }),
+    [],
+  );
 
   // Per-file thread lists plus a change signature, computed once per fetch.
   // The signature feeds MemoFileSection's comparator so only files whose
@@ -301,10 +318,43 @@ function ReviewView({ id }: { id: string }) {
     requestAnimationFrame(settle);
   };
 
+  // Overview counterpart of jumpToThread: settle-scroll to the thread's card
+  // wrapper (always mounted), then the card expands and flashes via its
+  // focusNonce prop. Cards above grow from lazy placeholders mid-scroll,
+  // hence the same re-snap loop.
+  const focusInOverview = (threadId: string) => {
+    setOverviewFocus((f) => ({ id: threadId, nonce: f.nonce + 1 }));
+    let lastTop = NaN;
+    let stable = 0;
+    const startedAt = Date.now();
+    const settle = () => {
+      const el = document.getElementById(`card-${threadId}`);
+      if (el) {
+        const target = Math.round(window.innerHeight * 0.25);
+        const top = Math.round(el.getBoundingClientRect().top);
+        if (Math.abs(top - target) > 2) window.scrollBy(0, top - target);
+        stable = top === lastTop ? stable + 1 : 0;
+        lastTop = top;
+      }
+      if (stable < 3 && Date.now() - startedAt < 2500) setTimeout(settle, 60);
+    };
+    settle();
+  };
+
+  threadRefImpl.current = {
+    open: (threadId) => {
+      const t = review.threads.find((x) => x.id === threadId);
+      if (!t) return;
+      if (tab === "overview") focusInOverview(threadId);
+      else jumpToThread(t);
+    },
+    titleFor: (threadId) => review.threads.find((x) => x.id === threadId)?.title,
+  };
+
   const openThreadCount = review.threads.filter((t) => t.status === "open").length;
 
   return (
-    <>
+    <ThreadRefContext.Provider value={threadRefHandler}>
       <TopBar />
       <div className="review">
       <a className="back-link" href="/">
@@ -338,6 +388,8 @@ function ReviewView({ id }: { id: string }) {
           threads={review.threads}
           claudeWorking={claudeWorking}
           active={tab === "overview"}
+          focus={overviewFocus}
+          onFocusThread={focusInOverview}
           onChanged={refresh}
           onJumpToThread={jumpToThread}
         />
@@ -387,7 +439,7 @@ function ReviewView({ id }: { id: string }) {
         </div>
       )}
       </div>
-    </>
+    </ThreadRefContext.Provider>
   );
 }
 

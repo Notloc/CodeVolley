@@ -266,6 +266,8 @@ export function OverviewTab({
   threads,
   claudeWorking,
   active,
+  focus,
+  onFocusThread,
   onChanged,
   onJumpToThread,
 }: {
@@ -278,6 +280,10 @@ export function OverviewTab({
   // Whether this tab is the visible one — hidden tabs can merge new entries
   // silently since there's no reader to disturb.
   active: boolean;
+  // In-feed focus (scroll to a thread's card, expand + flash it), owned by
+  // ReviewView so thread references in comment text can trigger it too.
+  focus: { id: string; nonce: number };
+  onFocusThread: (threadId: string) => void;
   onChanged: () => void;
   onJumpToThread: (thread: Thread) => void;
 }) {
@@ -343,30 +349,6 @@ export function OverviewTab({
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  // Action-row thread links land on the thread's card in this feed: settle
-  // scroll to its (always-mounted) wrapper, then have the card expand and
-  // flash via focusNonce. Same re-snap loop as the Details jumps — cards
-  // above grow from their lazy placeholders while we scroll past them.
-  const [focus, setFocus] = useState<{ id: string; nonce: number }>({ id: "", nonce: 0 });
-  const focusThread = (threadId: string) => {
-    setFocus((f) => ({ id: threadId, nonce: f.nonce + 1 }));
-    let lastTop = NaN;
-    let stable = 0;
-    const startedAt = Date.now();
-    const settle = () => {
-      const el = document.getElementById(`card-${threadId}`);
-      if (el) {
-        const target = Math.round(window.innerHeight * 0.25);
-        const top = Math.round(el.getBoundingClientRect().top);
-        if (Math.abs(top - target) > 2) window.scrollBy(0, top - target);
-        stable = top === lastTop ? stable + 1 : 0;
-        lastTop = top;
-      }
-      if (stable < 3 && Date.now() - startedAt < 2500) setTimeout(settle, 60);
-    };
-    settle();
-  };
-
   return (
     <div className="overview-body">
       <ul className="type-filter">
@@ -416,7 +398,7 @@ export function OverviewTab({
                   {e.threadId && (
                     <>
                       {" "}
-                      <button className="action-thread-link" onClick={() => focusThread(e.threadId!)}>
+                      <button className="action-thread-link" onClick={() => onFocusThread(e.threadId!)}>
                         {e.threadTitle}
                       </button>
                     </>
