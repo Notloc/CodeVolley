@@ -23,6 +23,9 @@ export function FileTree({
 }) {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [collapsedDirs, setCollapsedDirs] = useState<Set<string>>(new Set());
+  // Thread-badge hover tooltip. Fixed-position (viewport coords) because the
+  // tree's own scroll container would clip an absolutely-positioned popover.
+  const [tip, setTip] = useState<{ x: number; y: number; path: string } | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
 
   // Keep the highlighted (front-and-center) file visible within the tree's own
@@ -49,11 +52,10 @@ export function FileTree({
   function inFile(t: Thread, path: string): boolean {
     return t.currentAnchor.path === path || t.anchor.path === path;
   }
-  function openThreadCount(path: string): number {
-    return threads.filter((t) => t.status === "open" && inFile(t, path)).length;
-  }
-  function outdatedThreadCount(path: string): number {
-    return threads.filter((t) => t.anchorState === "outdated" && inFile(t, path)).length;
+  // The badge counts threads still asking for attention: open ones plus
+  // outdated ones (deduped — an open thread can also be outdated).
+  function attentionThreads(path: string): Thread[] {
+    return threads.filter((t) => inFile(t, path) && (t.status === "open" || t.anchorState === "outdated"));
   }
 
   function indentStyle(depth: number) {
@@ -77,8 +79,8 @@ export function FileTree({
         if (!isCollapsed) out.push(...renderNodes(node.children, depth + 1, groupKey));
       } else {
         const f = node.file;
-        const count = openThreadCount(f.path);
-        const outdated = outdatedThreadCount(f.path);
+        const attention = attentionThreads(f.path);
+        const anyOpen = attention.some((t) => t.status === "open");
         out.push(
           <li
             key={`f:${f.path}`}
@@ -92,14 +94,19 @@ export function FileTree({
             <span className="file-path" title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}>
               {node.name}
             </span>
-            {outdated > 0 && (
-              <span className="thread-count outdated" title={`${outdated} outdated thread${outdated === 1 ? "" : "s"}`}>
-                {outdated}
-              </span>
-            )}
-            {count > 0 && (
-              <span className="thread-count" title={`${count} open thread${count === 1 ? "" : "s"}`}>
-                {count}
+            {attention.length > 0 && (
+              <span
+                className={`thread-badge${anyOpen ? "" : " muted"}`}
+                onMouseEnter={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setTip({ x: rect.right + 8, y: rect.top + rect.height / 2, path: f.path });
+                }}
+                onMouseLeave={() => setTip(null)}
+              >
+                <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+                </svg>
+                {attention.length}
               </span>
             )}
           </li>,
@@ -109,7 +116,31 @@ export function FileTree({
     return out;
   }
 
+  // Hover detail for the combined badge: one row per counted thread (status
+  // dot + severity + title, outdated flagged), plus a muted tally of the
+  // file's closed threads that aren't counted.
+  function renderTooltip() {
+    if (!tip) return null;
+    const items = attentionThreads(tip.path);
+    if (items.length === 0) return null;
+    const closed = threads.filter((t) => inFile(t, tip.path)).length - items.length;
+    return (
+      <div className="tree-tooltip" style={{ left: tip.x, top: tip.y }}>
+        {items.map((t) => (
+          <div key={t.id} className="tree-tooltip-row">
+            <span className={`tip-dot tip-${t.status}`} />
+            <span className="tip-severity">{t.severity}</span>
+            <span className="tip-title">{t.title}</span>
+            {t.anchorState === "outdated" && <span className="outdated-tag">outdated</span>}
+          </div>
+        ))}
+        {closed > 0 && <div className="tree-tooltip-more">+ {closed} closed</div>}
+      </div>
+    );
+  }
+
   return (
+    <>
     <ul className="file-tree" ref={listRef}>
       {groups.map((group) => {
         const groupKey = group.name ?? "__all";
@@ -143,5 +174,7 @@ export function FileTree({
         );
       })}
     </ul>
+    {renderTooltip()}
+    </>
   );
 }
