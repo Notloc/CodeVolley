@@ -1,5 +1,5 @@
-import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
-import { FILE_STATUS_SYMBOL } from "../fileStatus.js";
+import { type CSSProperties, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import { FILE_STATUS_LETTER } from "../fileStatus.js";
 import { buildFileTree, type TreeNode } from "../fileTree.js";
 import type { FileGroup } from "../sections.js";
 import type { Thread } from "../types.js";
@@ -58,8 +58,19 @@ export function FileTree({
     return threads.filter((t) => inFile(t, path) && (t.status === "open" || t.anchorState === "outdated"));
   }
 
+  // Indentation plus VS Code-style guide rails: one 1px line under each
+  // ancestor level, drawn as a repeating gradient clipped to the indent area
+  // (inline longhands, so the stylesheet's hover/selected `background`
+  // shorthand can't wipe them).
   function indentStyle(depth: number) {
-    return { paddingLeft: `calc(0.4rem + ${depth * INDENT_REM}rem)` };
+    const style: CSSProperties = { paddingLeft: `calc(0.4rem + ${depth * INDENT_REM}rem)` };
+    if (depth > 0) {
+      style.backgroundImage = `repeating-linear-gradient(to right, var(--border) 0 1px, transparent 1px ${INDENT_REM}rem)`;
+      style.backgroundPosition = "0.7rem 0";
+      style.backgroundSize = `calc(${(depth - 1) * INDENT_REM}rem + 1px) 100%`;
+      style.backgroundRepeat = "no-repeat";
+    }
+    return style;
   }
 
   function renderNodes(nodes: TreeNode[], depth: number, groupKey: string): ReactNode[] {
@@ -88,8 +99,8 @@ export function FileTree({
             style={indentStyle(depth)}
             onClick={() => onSelect(f.path)}
           >
-            <span className={`badge badge-${f.status}`} title={f.status}>
-              {FILE_STATUS_SYMBOL[f.status]}
+            <span className={`status-letter letter-${f.status}`} title={f.status}>
+              {FILE_STATUS_LETTER[f.status]}
             </span>
             <span className="file-path" title={f.oldPath ? `${f.oldPath} → ${f.path}` : f.path}>
               {node.name}

@@ -7,7 +7,7 @@ import { OutdatedThreadsModal } from "./components/OutdatedThreadsModal.js";
 import { OverviewTab } from "./components/OverviewTab.js";
 import { ReviewActions } from "./components/ReviewActions.js";
 import { ReviewPicker } from "./components/ReviewPicker.js";
-import { FILE_STATUS_SYMBOL } from "./fileStatus.js";
+import { FILE_STATUS_LETTER } from "./fileStatus.js";
 import { orderedFiles } from "./fileTree.js";
 import { groupFiles, type Section } from "./sections.js";
 import type { Review, RevisionFile, Thread } from "./types.js";
@@ -66,7 +66,7 @@ function FileSection({
     <section id={fileAnchorId(file.path)} className={`file-section${collapsed ? " collapsed" : ""}`}>
       <div className="file-section-header" onClick={() => setCollapsed((c) => !c)}>
         <span className="collapse-caret">{collapsed ? "▸" : "▾"}</span>
-        <span className={`badge badge-${file.status}`} title={file.status}>{FILE_STATUS_SYMBOL[file.status]}</span>
+        <span className={`status-letter letter-${file.status}`} title={file.status}>{FILE_STATUS_LETTER[file.status]}</span>
         <span className="file-section-path">{file.oldPath ? `${file.oldPath} → ${file.path}` : file.path}</span>
         {outdated.length > 0 && (
           <button
