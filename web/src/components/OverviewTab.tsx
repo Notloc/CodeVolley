@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import * as api from "../api.js";
 import { buildUnifiedRows } from "../diffRows.js";
-import type { FileContent, Severity, Thread } from "../types.js";
+import type { Actor, FileContent, ReviewEvent, Severity, Thread, ThreadStatus } from "../types.js";
 import { LazyMount } from "./LazyMount.js";
 import { ThreadPanel } from "./ThreadPanel.js";
 
@@ -24,6 +24,107 @@ function timeAgo(ms: number): string {
   return new Date(ms).toLocaleDateString();
 }
 
+// The feed is a timeline of entries derived from the review's event log:
+// a thread's creation renders as its full card; later activity on it (and
+// review-level events) render as compact action rows. A resolution therefore
+// surfaces as fresh activity at the top instead of quietly collapsing a card
+// buried at its creation spot.
+interface ThreadEntry {
+  kind: "thread";
+  key: string;
+  at: number;
+  seq: number;
+  thread: Thread;
+}
+interface ActionEntry {
+  kind: "action";
+  key: string;
+  at: number;
+  seq: number;
+  actor: Actor;
+  verb: string;
+  // Colours the row's status dot: resolved | open | wontfix | revision | review.
+  dot: string;
+  threadId?: string;
+  threadTitle?: string;
+  // Lets the type filter apply to a thread's activity too; review-level
+  // rows (revisions, close/reopen) have none and always show.
+  severity?: Severity;
+}
+type Entry = ThreadEntry | ActionEntry;
+
+const STATUS_VERB: Record<ThreadStatus, string> = {
+  resolved: "resolved",
+  wontfix: "marked won't fix on",
+  open: "reopened",
+};
+
+function buildEntries(events: ReviewEvent[], threads: Thread[]): Entry[] {
+  const byId = new Map(threads.map((t) => [t.id, t]));
+  const carded = new Set<string>();
+  const out: Entry[] = [];
+
+  for (const e of events) {
+    const at = Date.parse(e.createdAt);
+    if (e.type === "thread_created") {
+      const id = (e.payload as { id?: string }).id;
+      const thread = id ? byId.get(id) : undefined;
+      if (thread) {
+        out.push({ kind: "thread", key: `t-${thread.id}`, at, seq: e.seq, thread });
+        carded.add(thread.id);
+      }
+    } else if (e.type === "thread_status_changed") {
+      const p = e.payload as { thread?: string; status?: ThreadStatus; title?: string };
+      if (!p.thread || !p.status) continue;
+      const live = byId.get(p.thread);
+      out.push({
+        kind: "action",
+        key: `e-${e.seq}`,
+        at,
+        seq: e.seq,
+        actor: e.actor,
+        verb: STATUS_VERB[p.status],
+        dot: p.status,
+        threadId: p.thread,
+        // Prefer the live title (it can be edited); the payload snapshot
+        // covers threads that somehow left the review.
+        threadTitle: live?.title ?? p.title ?? p.thread,
+        severity: live?.severity,
+      });
+    } else if (e.type === "revision_submitted") {
+      const p = e.payload as { revision?: number };
+      out.push({
+        kind: "action",
+        key: `e-${e.seq}`,
+        at,
+        seq: e.seq,
+        actor: e.actor,
+        verb: `submitted revision ${p.revision ?? "?"}`,
+        dot: "revision",
+      });
+    } else if (e.type === "review_closed" || e.type === "review_reopened") {
+      out.push({
+        kind: "action",
+        key: `e-${e.seq}`,
+        at,
+        seq: e.seq,
+        actor: e.actor,
+        verb: e.type === "review_closed" ? "closed the review" : "reopened the review",
+        dot: "review",
+      });
+    }
+  }
+
+  // The events fetch can lag the review fetch by a beat — threads whose
+  // created event hasn't arrived yet still get a card at their creation time.
+  for (const t of threads) {
+    if (!carded.has(t.id)) out.push({ kind: "thread", key: `t-${t.id}`, at: createdAtMs(t), seq: 0, thread: t });
+  }
+
+  out.sort((a, b) => b.at - a.at || b.seq - a.seq);
+  return out;
+}
+
 // One feed entry: a mini diff snippet around the thread's anchor (rendered
 // with the same row markup/classes as DiffFile) with the thread panel inline
 // beneath its line, plus a path:line link out to the Details tab.
@@ -32,6 +133,7 @@ function ThreadCard({
   revisionNumber,
   thread,
   claudeWorking,
+  focusNonce,
   onChanged,
   onJump,
 }: {
@@ -39,6 +141,8 @@ function ThreadCard({
   revisionNumber: number;
   thread: Thread;
   claudeWorking: boolean;
+  // Bumped when an action row's thread link targets this card: expand + flash.
+  focusNonce: number;
   onChanged: () => void;
   onJump: () => void;
 }) {
@@ -55,6 +159,16 @@ function ThreadCard({
   useEffect(() => {
     setOverride(null);
   }, [thread.status]);
+
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (!focusNonce) return;
+    setOverride(true);
+    setFlash(true);
+    const timer = setTimeout(() => setFlash(false), 1600);
+    return () => clearTimeout(timer);
+  }, [focusNonce]);
+
   const expanded = override ?? thread.status === "open";
 
   useEffect(() => {
@@ -91,7 +205,9 @@ function ThreadCard({
   const panel = <ThreadPanel reviewId={reviewId} thread={thread} claudeWorking={claudeWorking} onChanged={onChanged} bare />;
 
   return (
-    <article className={`thread-card status-${thread.status} severity-${thread.severity}${expanded ? "" : " collapsed"}`}>
+    <article
+      className={`thread-card status-${thread.status} severity-${thread.severity}${expanded ? "" : " collapsed"}${flash ? " flash" : ""}`}
+    >
       <div className="thread-card-header" onClick={() => setOverride(!expanded)}>
         <span className="collapse-caret">{expanded ? "▾" : "▸"}</span>
         <span className="thread-status-tag">{thread.status}</span>
@@ -146,6 +262,7 @@ function ThreadCard({
 export function OverviewTab({
   reviewId,
   revisionNumber,
+  lastSeq,
   threads,
   claudeWorking,
   active,
@@ -154,17 +271,31 @@ export function OverviewTab({
 }: {
   reviewId: string;
   revisionNumber: number;
+  // Bumps on every review event — cue to refetch the event log.
+  lastSeq: number;
   threads: Thread[];
   claudeWorking: boolean;
-  // Whether this tab is the visible one — hidden tabs can merge new threads
+  // Whether this tab is the visible one — hidden tabs can merge new entries
   // silently since there's no reader to disturb.
   active: boolean;
   onChanged: () => void;
   onJumpToThread: (thread: Thread) => void;
 }) {
-  // Newest first, keyed on creation time so replies/status changes update a
-  // card in place without reordering the feed under the reader.
-  const sorted = useMemo(() => [...threads].sort((a, b) => createdAtMs(b) - createdAtMs(a)), [threads]);
+  const [events, setEvents] = useState<ReviewEvent[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getEvents(reviewId)
+      .then((e) => {
+        if (!cancelled) setEvents(e);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [reviewId, lastSeq]);
+
+  const entries = useMemo(() => buildEntries(events, threads), [events, threads]);
 
   // Type filter: empty set = no filter (all types). Clicking types builds up
   // the applicable set; "All threads" (or unticking the last type) resets.
@@ -176,7 +307,12 @@ export function OverviewTab({
       else next.add(s);
       return next;
     });
-  const filtered = typeFilter.size === 0 ? sorted : sorted.filter((t) => typeFilter.has(t.severity));
+  const matchesFilter = (e: Entry) => {
+    if (typeFilter.size === 0) return true;
+    if (e.kind === "thread") return typeFilter.has(e.thread.severity);
+    return e.severity === undefined || typeFilter.has(e.severity);
+  };
+  const filtered = entries.filter(matchesFilter);
 
   const typeCounts = useMemo(() => {
     const counts = new Map<Severity, number>();
@@ -184,27 +320,51 @@ export function OverviewTab({
     return counts;
   }, [threads]);
 
-  // Anti-jarring: threads that arrive while the user is scrolled into the feed
-  // (reading or mid-reply) are held out of the list — a sticky "N new threads"
-  // pill reveals them. Near the top (or with the tab hidden) they merge
-  // straight in, which is the "newest appear as they come in" behaviour.
-  const [shownIds, setShownIds] = useState<Set<string> | null>(null);
+  // Anti-jarring: entries that arrive while the user is scrolled into the feed
+  // (reading or mid-reply) are held out of the list — a sticky "N new" pill
+  // reveals them. Near the top (or with the tab hidden) they merge straight
+  // in, which is the "newest appear as they come in" behaviour.
+  const [shownKeys, setShownKeys] = useState<Set<string> | null>(null);
   useEffect(() => {
-    setShownIds((prev) => {
-      const ids = new Set(threads.map((t) => t.id));
-      if (prev === null) return ids;
-      if (!threads.some((t) => !prev.has(t.id))) return prev;
-      if (!active || window.scrollY < 120) return ids;
+    setShownKeys((prev) => {
+      const keys = new Set(entries.map((e) => e.key));
+      if (prev === null) return keys;
+      if (!entries.some((e) => !prev.has(e.key))) return prev;
+      if (!active || window.scrollY < 120) return keys;
       return prev;
     });
-  }, [threads, active]);
+  }, [entries, active]);
 
-  const held = shownIds === null ? [] : filtered.filter((t) => !shownIds.has(t.id));
-  const visible = shownIds === null ? filtered : filtered.filter((t) => shownIds.has(t.id));
+  const held = shownKeys === null ? [] : filtered.filter((e) => !shownKeys.has(e.key));
+  const visible = shownKeys === null ? filtered : filtered.filter((e) => shownKeys.has(e.key));
 
   const revealHeld = () => {
-    setShownIds(new Set(threads.map((t) => t.id)));
+    setShownKeys(new Set(entries.map((e) => e.key)));
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Action-row thread links land on the thread's card in this feed: settle
+  // scroll to its (always-mounted) wrapper, then have the card expand and
+  // flash via focusNonce. Same re-snap loop as the Details jumps — cards
+  // above grow from their lazy placeholders while we scroll past them.
+  const [focus, setFocus] = useState<{ id: string; nonce: number }>({ id: "", nonce: 0 });
+  const focusThread = (threadId: string) => {
+    setFocus((f) => ({ id: threadId, nonce: f.nonce + 1 }));
+    let lastTop = NaN;
+    let stable = 0;
+    const startedAt = Date.now();
+    const settle = () => {
+      const el = document.getElementById(`card-${threadId}`);
+      if (el) {
+        const target = Math.round(window.innerHeight * 0.25);
+        const top = Math.round(el.getBoundingClientRect().top);
+        if (Math.abs(top - target) > 2) window.scrollBy(0, top - target);
+        stable = top === lastTop ? stable + 1 : 0;
+        lastTop = top;
+      }
+      if (stable < 3 && Date.now() - startedAt < 2500) setTimeout(settle, 60);
+    };
+    settle();
   };
 
   return (
@@ -225,26 +385,47 @@ export function OverviewTab({
       <div className="overview-feed">
         {held.length > 0 && (
           <button className="new-threads-pill" onClick={revealHeld}>
-            ↑ {held.length} new {held.length === 1 ? "thread" : "threads"}
+            ↑ {held.length} new {held.length === 1 ? "update" : "updates"}
           </button>
         )}
-        {sorted.length === 0 ? (
-          <div className="empty overview-empty">No threads yet — comments will appear here as they come in.</div>
+        {entries.length === 0 ? (
+          <div className="empty overview-empty">No activity yet — threads will appear here as they come in.</div>
         ) : filtered.length === 0 ? (
           <div className="empty overview-empty">No threads of the selected types.</div>
         ) : (
-          visible.map((t) => (
-            <LazyMount key={t.id} minHeight={180}>
-              <ThreadCard
-                reviewId={reviewId}
-                revisionNumber={revisionNumber}
-                thread={t}
-                claudeWorking={claudeWorking}
-                onChanged={onChanged}
-                onJump={() => onJumpToThread(t)}
-              />
-            </LazyMount>
-          ))
+          visible.map((e) =>
+            e.kind === "thread" ? (
+              <div key={e.key} id={`card-${e.thread.id}`}>
+                <LazyMount minHeight={180}>
+                  <ThreadCard
+                    reviewId={reviewId}
+                    revisionNumber={revisionNumber}
+                    thread={e.thread}
+                    claudeWorking={claudeWorking}
+                    focusNonce={focus.id === e.thread.id ? focus.nonce : 0}
+                    onChanged={onChanged}
+                    onJump={() => onJumpToThread(e.thread)}
+                  />
+                </LazyMount>
+              </div>
+            ) : (
+              <div key={e.key} className={`action-row dot-${e.dot}`}>
+                <span className="action-dot" />
+                <span className="action-text">
+                  <strong className={`action-actor actor-${e.actor}`}>{e.actor === "claude" ? "Claude" : "User"}</strong> {e.verb}
+                  {e.threadId && (
+                    <>
+                      {" "}
+                      <button className="action-thread-link" onClick={() => focusThread(e.threadId!)}>
+                        {e.threadTitle}
+                      </button>
+                    </>
+                  )}
+                </span>
+                <span className="action-time">{timeAgo(e.at)}</span>
+              </div>
+            ),
+          )
         )}
       </div>
     </div>

@@ -29,7 +29,16 @@ import {
   type WaitForActivityRequest,
   type WaitForActivityResponse,
 } from "../shared/internal-api.js";
-import { type Actor, type Anchor, type Comment, type Note, RevisionFileSchema, type Review, ThreadSchema } from "../shared/types.js";
+import {
+  type Actor,
+  type Anchor,
+  type Comment,
+  type Event,
+  type Note,
+  RevisionFileSchema,
+  type Review,
+  ThreadSchema,
+} from "../shared/types.js";
 import { appendEvent } from "./events.js";
 import { NotFoundError, ReviewClosedError, ValidationError } from "./errors.js";
 import { captureDiff, GitError } from "./git.js";
@@ -402,6 +411,14 @@ export async function waitForActivity(repoRoot: string, req: WaitForActivityRequ
 export async function getPresence(repoRoot: string, reviewIdOrTitle: string): Promise<{ listening: boolean; online: boolean }> {
   const review = await resolveAndReadReview(repoRoot, reviewIdOrTitle);
   return { listening: isListening(review.id), online: isOnline() };
+}
+
+// The persisted event log, for the web UI's activity timeline. projectReview
+// strips events from the review payload (they're storage detail for the
+// tools), so the UI fetches them separately.
+export async function getReviewEvents(repoRoot: string, reviewIdOrTitle: string): Promise<Event[]> {
+  const review = await resolveAndReadReview(repoRoot, reviewIdOrTitle);
+  return review.events;
 }
 
 // Captures a new immutable revision and re-anchors open threads (design doc

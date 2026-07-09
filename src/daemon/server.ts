@@ -30,6 +30,7 @@ import {
   getFileContent,
   getPresence,
   getReview,
+  getReviewEvents,
   listReviews,
   markUserDone,
   postNote,
@@ -233,6 +234,8 @@ export function createApp(repoRoot: string, port: number): Hono {
   app.get("/api/config", (c) => handled(c, () => readWorkspaceConfig(repoRoot)));
 
   app.get("/api/reviews/:idOrTitle/presence", (c) => handled(c, () => getPresence(repoRoot, c.req.param("idOrTitle"))));
+
+  app.get("/api/reviews/:idOrTitle/events", (c) => handled(c, () => getReviewEvents(repoRoot, c.req.param("idOrTitle"))));
 
   // UI-only: the "Done for now" button (§5). No MCP tool mirrors this — it's
   // inherently a user action; Claude just observes it via wait_for_activity.

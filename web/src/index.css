@@ -811,6 +811,46 @@ button:disabled { opacity: 0.5; cursor: default; }
 .thread-card .line-no { cursor: default; }
 .thread-card .line-no:hover { opacity: 0.5; background: none; }
 
+/* Action rows: compact timeline lines for activity after a thread's creation
+   (status changes, revisions, review close/reopen). */
+.action-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.9rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+.action-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.action-dot { width: 0.55rem; height: 0.55rem; border-radius: 999px; flex-shrink: 0; }
+/* Dot keys to the resulting state (same palette as the status tags). */
+.dot-resolved .action-dot { background: #3fb950; }
+.dot-open .action-dot { background: #d29922; }
+.dot-wontfix .action-dot { background: #6b7180; }
+.dot-revision .action-dot { background: #4f8ff7; }
+.dot-review .action-dot { background: var(--accent); }
+.action-actor.actor-claude { color: #f0883e; }
+.action-actor.actor-user { color: #6e9bf0; }
+.action-thread-link {
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+  font-style: italic;
+  color: var(--text);
+  cursor: pointer;
+}
+.action-thread-link:hover { text-decoration: underline; background: none; }
+.action-time { margin-left: auto; flex-shrink: 0; font-size: 0.78rem; }
+
+/* Landing flash when an action row's link brings you to a card. */
+@keyframes card-flash {
+  0% { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent); }
+  100% { border-color: var(--border); box-shadow: 0 0 0 3px transparent; }
+}
+.thread-card.flash { animation: card-flash 1.5s ease-out; }
+
 /* Threads that arrive while the reader is scrolled into the feed are held
    back (no content shifting mid-read); this sticky pill reveals them. */
 .new-threads-pill {

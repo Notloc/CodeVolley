@@ -93,6 +93,10 @@ export function getPresence(reviewId: string): Promise<{ listening: boolean; onl
   return request(`/api/reviews/${encodeURIComponent(reviewId)}/presence`);
 }
 
+export function getEvents(reviewId: string): Promise<ReviewEvent[]> {
+  return request(`/api/reviews/${encodeURIComponent(reviewId)}/events`);
+}
+
 export function subscribeToReviewStream(reviewId: string, after: number, onEvent: (event: ReviewEvent) => void): () => void {
   const source = new EventSource(`/api/reviews/${encodeURIComponent(reviewId)}/stream?after=${after}`);
   const handler = (e: MessageEvent) => onEvent(JSON.parse(e.data));

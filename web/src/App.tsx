@@ -334,6 +334,7 @@ function ReviewView({ id }: { id: string }) {
         <OverviewTab
           reviewId={id}
           revisionNumber={revision.number}
+          lastSeq={review.lastSeq}
           threads={review.threads}
           claudeWorking={claudeWorking}
           active={tab === "overview"}
