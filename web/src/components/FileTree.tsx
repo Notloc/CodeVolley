@@ -1,5 +1,6 @@
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { FILE_STATUS_LETTER } from "../fileStatus.js";
+import { isResolvable } from "../threads.js";
 import { buildFileTree, type TreeNode } from "../fileTree.js";
 import type { FileGroup } from "../sections.js";
 import type { Thread } from "../types.js";
@@ -52,10 +53,13 @@ export function FileTree({
   function inFile(t: Thread, path: string): boolean {
     return t.currentAnchor.path === path || t.anchor.path === path;
   }
-  // The badge counts threads still asking for attention: open ones plus
-  // outdated ones (deduped — an open thread can also be outdated).
+  // The badge counts threads still asking for attention: open ones (plain
+  // comments like praise excluded — see isResolvable) plus outdated ones
+  // (deduped — an open thread can also be outdated).
   function attentionThreads(path: string): Thread[] {
-    return threads.filter((t) => inFile(t, path) && (t.status === "open" || t.anchorState === "outdated"));
+    return threads.filter(
+      (t) => inFile(t, path) && ((t.status === "open" && isResolvable(t)) || t.anchorState === "outdated"),
+    );
   }
 
   // Indentation plus VS Code-style guide rails: one 1px line under each

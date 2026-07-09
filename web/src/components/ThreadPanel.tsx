@@ -1,5 +1,6 @@
 import { useState } from "react";
 import * as api from "../api.js";
+import { isResolvable } from "../threads.js";
 import type { Thread, ThreadStatus } from "../types.js";
 import { Markdown } from "./Markdown.js";
 
@@ -38,10 +39,17 @@ export function ThreadPanel({
   const [override, setOverride] = useState<boolean | null>(null);
   const expanded = bare || (override ?? thread.status === "open");
 
-  // From open you can resolve or mark won't-fix; from a closed state (resolved
-  // or wontfix) the only move is reopen — no jumping resolved <-> wontfix.
-  const availableTransitions =
-    thread.status === "open"
+  // Plain comments (praise) keep a minimal lifecycle purely so they can be
+  // tucked away: "Nice" resolves (collapses) the comment, Reopen undoes it —
+  // no won't-fix, no status pill. Otherwise: from open you can resolve or
+  // mark won't-fix; from a closed state (resolved or wontfix) the only move
+  // is reopen — no jumping resolved <-> wontfix.
+  const resolvable = isResolvable(thread);
+  const availableTransitions = !resolvable
+    ? thread.status === "open"
+      ? [{ status: "resolved" as ThreadStatus, label: "Nice" }]
+      : [{ status: "open" as ThreadStatus, label: "Reopen" }]
+    : thread.status === "open"
       ? STATUS_TRANSITIONS.filter((t) => t.status !== "open")
       : STATUS_TRANSITIONS.filter((t) => t.status === "open");
 
@@ -58,7 +66,7 @@ export function ThreadPanel({
       {!bare && (
         <div className="thread-header" onClick={() => setOverride(!expanded)}>
           <span className="collapse-caret">{expanded ? "▾" : "▸"}</span>
-          <span className="thread-status-tag">{thread.status}</span>
+          {resolvable && <span className="thread-status-tag">{thread.status}</span>}
           <strong>{thread.title}</strong>
           <span className="severity-tag">{thread.severity}</span>
           {thread.anchorState === "outdated" && <span className="outdated-tag">outdated</span>}
@@ -138,24 +146,27 @@ export function ThreadPanel({
           >
             Reply
           </button>
-          <button
-            className="fix-it-button"
-            disabled={busy}
-            title="Ask Claude to take the obvious action and resolve this thread"
-            onClick={async () => {
-              setBusy(true);
-              await api.reply(reviewId, thread.id, FIX_IT_DIRECTIVE);
-              setBusy(false);
-              onChanged();
-            }}
-          >
-            Fix it!
-          </button>
+          {resolvable && (
+            <button
+              className="fix-it-button"
+              disabled={busy}
+              title="Ask Claude to take the obvious action and resolve this thread"
+              onClick={async () => {
+                setBusy(true);
+                await api.reply(reviewId, thread.id, FIX_IT_DIRECTIVE);
+                setBusy(false);
+                onChanged();
+              }}
+            >
+              Fix it!
+            </button>
+          )}
           {availableTransitions.length > 0 && (
             <div className="reply-transitions">
               {availableTransitions.map((t) => (
                 <button
                   key={t.status}
+                  className={t.label === "Nice" ? "nice-button" : undefined}
                   disabled={busy}
                   onClick={async () => {
                     setBusy(true);

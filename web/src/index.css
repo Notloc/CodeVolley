@@ -743,6 +743,14 @@ a.thread-ref:hover { background: color-mix(in srgb, #5b8def 26%, transparent); t
 }
 .fix-it-button:hover:not(:disabled) { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 
+/* "Nice" — a praise comment's only lifecycle button (resolves to tuck it
+   away), tinted the praise green. */
+.nice-button {
+  border-color: color-mix(in srgb, #3fb950 40%, var(--border));
+  color: color-mix(in srgb, #3fb950 70%, var(--text-muted));
+}
+.nice-button:hover:not(:disabled) { background: color-mix(in srgb, #3fb950 12%, transparent); }
+
 .other-threads {
   margin-top: 1rem;
   padding-top: 0.75rem;

@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import * as api from "../api.js";
 import { buildUnifiedRows } from "../diffRows.js";
+import { isResolvable } from "../threads.js";
 import type { Actor, FileContent, ReviewEvent, Severity, Thread, ThreadStatus } from "../types.js";
 import { LazyMount } from "./LazyMount.js";
 import { ThreadPanel } from "./ThreadPanel.js";
@@ -210,7 +211,7 @@ function ThreadCard({
     >
       <div className="thread-card-header" onClick={() => setOverride(!expanded)}>
         <span className="collapse-caret">{expanded ? "▾" : "▸"}</span>
-        <span className="thread-status-tag">{thread.status}</span>
+        {isResolvable(thread) && <span className="thread-status-tag">{thread.status}</span>}
         <strong className="thread-card-title">{thread.title}</strong>
         <span className="severity-tag">{thread.severity}</span>
         {thread.anchorState === "outdated" && <span className="outdated-tag">outdated</span>}

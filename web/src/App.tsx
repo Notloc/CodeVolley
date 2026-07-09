@@ -9,6 +9,7 @@ import { OverviewTab } from "./components/OverviewTab.js";
 import { ReviewActions } from "./components/ReviewActions.js";
 import { ReviewPicker } from "./components/ReviewPicker.js";
 import { FILE_STATUS_LETTER } from "./fileStatus.js";
+import { isResolvable } from "./threads.js";
 import { orderedFiles } from "./fileTree.js";
 import { groupFiles, type Section } from "./sections.js";
 import type { Review, RevisionFile, Thread } from "./types.js";
@@ -351,7 +352,8 @@ function ReviewView({ id }: { id: string }) {
     titleFor: (threadId) => review.threads.find((x) => x.id === threadId)?.title,
   };
 
-  const openThreadCount = review.threads.filter((t) => t.status === "open").length;
+  // Plain comments (praise) aren't open work — see isResolvable.
+  const openThreadCount = review.threads.filter((t) => t.status === "open" && isResolvable(t)).length;
 
   return (
     <ThreadRefContext.Provider value={threadRefHandler}>
