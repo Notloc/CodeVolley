@@ -661,3 +661,169 @@ button:disabled { opacity: 0.5; cursor: default; }
 .other-thread { margin-bottom: 0.75rem; }
 .other-thread .thread-meta { display: block; margin-bottom: 0.25rem; }
 .thread-meta { color: var(--text-muted); font-size: 0.75rem; font-family: ui-monospace, monospace; }
+
+/* Tabs: Overview (thread feed) / Details (full diff). */
+.review-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.25rem;
+}
+.review-tab {
+  border: none;
+  background: none;
+  border-radius: 0;
+  padding: 0.45rem 0.9rem;
+  margin-bottom: -1px;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.review-tab:hover { background: none; color: var(--text); }
+.review-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+}
+.review-tab.active .tab-count {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+/* Inactive tab panels stay mounted (preserving fetched diffs, reply drafts,
+   expander state) but hidden. Declared after .review-body so it wins. */
+.tab-hidden { display: none; }
+
+/* Overview: type-filter sidebar + newest-first feed of thread cards. */
+.overview-body {
+  display: grid;
+  grid-template-columns: 190px minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+.type-filter {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  position: sticky;
+  top: 1.5rem;
+}
+.type-filter li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+  color: var(--text-muted);
+}
+.type-filter li:hover { background: var(--bg-subtle); }
+.type-filter li.active { color: var(--text); background: color-mix(in srgb, currentColor 10%, transparent); }
+.type-count { margin-left: auto; font-size: 0.75rem; opacity: 0.7; }
+/* Dots reuse the severity-tag palette so the sidebar keys to the cards. */
+.type-dot { width: 0.55rem; height: 0.55rem; border-radius: 999px; flex-shrink: 0; }
+.type-dot.sev-issue { background: #e5534b; }
+.type-dot.sev-suggestion { background: #4f8ff7; }
+.type-dot.sev-question { background: #a371f7; }
+.type-dot.sev-nit { background: #9aa1b2; }
+.type-dot.sev-praise { background: #3fb950; }
+
+.overview-feed {
+  max-width: 1100px;
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.overview-empty { padding: 2rem 0; text-align: center; }
+.thread-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--code-bg);
+}
+/* Card header owns the collapse + always-visible context (status, title,
+   severity, path:line link) — the thread panel inside renders bare. */
+.thread-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.8rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+  cursor: pointer;
+  user-select: none;
+}
+.thread-card.collapsed .thread-card-header { border-bottom: none; }
+/* Same treatment as collapsed thread panels: state reads without colour. */
+.thread-card.collapsed { opacity: 0.75; }
+.thread-card.collapsed:hover { opacity: 1; }
+.thread-card-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thread-card-header .thread-status-tag,
+.thread-card-header .severity-tag,
+.thread-card-header .outdated-tag { flex-shrink: 0; }
+.thread-card-link {
+  border: none;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #8db4f6;
+  cursor: pointer;
+  display: flex;
+  min-width: 0;
+  max-width: 45%;
+  white-space: nowrap;
+}
+/* When space runs out the directory part gives way first, so the
+   basename:line — the part you actually navigate by — stays visible. */
+.thread-card-link .link-dir { overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; min-width: 0; }
+.thread-card-link .link-file { flex-shrink: 0; }
+.thread-card-link:hover { text-decoration: underline; background: none; }
+.thread-card-rev { color: var(--text-muted); font-size: 0.78rem; flex-shrink: 0; }
+.thread-card-time { color: var(--text-muted); font-size: 0.78rem; flex-shrink: 0; }
+/* Fallback body when a snippet can't be built (binary, fetch failure). */
+.thread-card-body { padding: 0.75rem; }
+.thread-card .diff-placeholder { border: none; border-radius: 0; }
+/* Snippet line numbers aren't comment targets — no pointer affordance. */
+.thread-card .line-no { cursor: default; }
+.thread-card .line-no:hover { opacity: 0.5; background: none; }
+
+/* Threads that arrive while the reader is scrolled into the feed are held
+   back (no content shifting mid-read); this sticky pill reveals them. */
+.new-threads-pill {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 10;
+  align-self: center;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--border));
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  padding: 0.35rem 0.9rem;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.new-threads-pill:hover { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }

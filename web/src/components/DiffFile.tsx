@@ -175,7 +175,8 @@ export function DiffFile({
           </div>
         )}
         {rowThreads.map((t) => (
-          <div key={t.id} className="full-row">
+          // The id is the Overview tab's jump target for this thread.
+          <div key={t.id} id={`thread-${t.id}`} className="full-row">
             <div className={`pinned thread-row kind-${row.kind}`}>
               <ThreadPanel reviewId={reviewId} thread={t} claudeWorking={claudeWorking} onChanged={onChanged} />
             </div>

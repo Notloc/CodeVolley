@@ -19,11 +19,15 @@ export function ThreadPanel({
   thread,
   claudeWorking,
   onChanged,
+  bare = false,
 }: {
   reviewId: string;
   thread: Thread;
   claudeWorking: boolean;
   onChanged: () => void;
+  // Bare mode drops the panel's own header and collapse behaviour — for hosts
+  // (like Overview cards) that show the title/status/collapse themselves.
+  bare?: boolean;
 }) {
   const [replyBody, setReplyBody] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -32,7 +36,7 @@ export function ThreadPanel({
   // `null` = follow status (resolved/wontfix collapse, open expands), so
   // resolving a thread auto-collapses it until the user overrides by clicking.
   const [override, setOverride] = useState<boolean | null>(null);
-  const expanded = override ?? thread.status === "open";
+  const expanded = bare || (override ?? thread.status === "open");
 
   // From open you can resolve or mark won't-fix; from a closed state (resolved
   // or wontfix) the only move is reopen — no jumping resolved <-> wontfix.
@@ -48,13 +52,15 @@ export function ThreadPanel({
 
   return (
     <div className={`thread-panel severity-${thread.severity} status-${thread.status} ${expanded ? "" : "collapsed"}`}>
-      <div className="thread-header" onClick={() => setOverride(!expanded)}>
-        <span className="collapse-caret">{expanded ? "▾" : "▸"}</span>
-        <span className="thread-status-tag">{thread.status}</span>
-        <strong>{thread.title}</strong>
-        <span className="severity-tag">{thread.severity}</span>
-        {thread.anchorState === "outdated" && <span className="outdated-tag">outdated</span>}
-      </div>
+      {!bare && (
+        <div className="thread-header" onClick={() => setOverride(!expanded)}>
+          <span className="collapse-caret">{expanded ? "▾" : "▸"}</span>
+          <span className="thread-status-tag">{thread.status}</span>
+          <strong>{thread.title}</strong>
+          <span className="severity-tag">{thread.severity}</span>
+          {thread.anchorState === "outdated" && <span className="outdated-tag">outdated</span>}
+        </div>
+      )}
 
       {expanded && (
         <>

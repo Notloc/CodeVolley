@@ -1,8 +1,10 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "./api.js";
 import { DiffFile } from "./components/DiffFile.js";
 import { FileTree } from "./components/FileTree.js";
+import { LazyMount } from "./components/LazyMount.js";
 import { OutdatedThreadsModal } from "./components/OutdatedThreadsModal.js";
+import { OverviewTab } from "./components/OverviewTab.js";
 import { ReviewActions } from "./components/ReviewActions.js";
 import { ReviewPicker } from "./components/ReviewPicker.js";
 import { FILE_STATUS_SYMBOL } from "./fileStatus.js";
@@ -29,31 +31,6 @@ function TopBar() {
       </a>
     </div>
   );
-}
-
-// Mounts its children only once they scroll near the viewport, so a review
-// with hundreds of files (or a 20k-line change) doesn't build every diff up
-// front — off-screen files stay cheap placeholders until you reach them.
-function LazyMount({ minHeight, children }: { minHeight: number; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  const [shown, setShown] = useState(false);
-
-  useEffect(() => {
-    if (shown || !ref.current) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setShown(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: "800px 0px" },
-    );
-    observer.observe(ref.current);
-    return () => observer.disconnect();
-  }, [shown]);
-
-  return <div ref={ref}>{shown ? children : <div className="diff-placeholder" style={{ minHeight }} />}</div>;
 }
 
 function fileAnchorId(path: string): string {
@@ -149,10 +126,17 @@ const MemoFileSection = memo(
     prev.threadsSig === next.threadsSig,
 );
 
+type Tab = "overview" | "details";
+
 function ReviewView({ id }: { id: string }) {
   const [review, setReview] = useState<Review | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // Overview (thread feed) is the landing tab; Details is the full diff.
+  // Both stay mounted (hidden via CSS) so drafts, expanded gaps, and fetched
+  // diffs survive tab flips — only the window scroll needs saving per tab.
+  const [tab, setTab] = useState<Tab>("overview");
+  const tabScroll = useRef<Record<Tab, number>>({ overview: 0, details: 0 });
   const [listening, setListening] = useState<boolean | null>(null);
   const [online, setOnline] = useState(false);
   const [sections, setSections] = useState<Section[]>([]);
@@ -199,8 +183,10 @@ function ReviewView({ id }: { id: string }) {
 
   // Scroll-spy: highlight whichever file is front-and-center in the viewport.
   // Every file's `.file-section` wrapper is always in the DOM (even lazy ones),
-  // so we pick the section whose top is closest above a reference line.
+  // so we pick the section whose top is closest above a reference line. Only
+  // meaningful while the Details tab is showing (hidden sections measure 0,0).
   useEffect(() => {
+    if (tab !== "details") return;
     let raf = 0;
     const compute = () => {
       raf = 0;
@@ -228,7 +214,7 @@ function ReviewView({ id }: { id: string }) {
       cancelAnimationFrame(raf);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, review !== null]);
+  }, [id, review !== null, tab]);
 
   // Per-file thread lists plus a change signature, computed once per fetch.
   // The signature feeds MemoFileSection's comparator so only files whose
@@ -260,6 +246,13 @@ function ReviewView({ id }: { id: string }) {
   // wait) — drives the "replying…" spinner on threads awaiting a reply.
   const claudeWorking = review.status === "open" && online && listening === false;
 
+  const switchTab = (next: Tab) => {
+    if (next === tab) return;
+    tabScroll.current[tab] = window.scrollY;
+    setTab(next);
+    requestAnimationFrame(() => window.scrollTo(0, tabScroll.current[next]));
+  };
+
   const scrollToFile = (path: string) => {
     setSelectedPath(path);
     // Lazily-mounting file sections grow from their placeholder height as we
@@ -281,6 +274,35 @@ function ReviewView({ id }: { id: string }) {
     settle();
   };
 
+  // From an Overview card: land on the thread's inline row in Details. The
+  // row only exists once its file lazily mounts, so until then we snap to the
+  // file section (which triggers the mount) and keep retrying — same settle
+  // approach as scrollToFile. Outdated threads have no inline row and end at
+  // their file's header (where the outdated badge lives).
+  const jumpToThread = (t: Thread) => {
+    const path = t.currentAnchor.path;
+    switchTab("details");
+    setSelectedPath(path);
+    let lastTop = NaN;
+    let stable = 0;
+    const startedAt = Date.now();
+    const settle = () => {
+      const threadEl = document.getElementById(`thread-${t.id}`);
+      const el = threadEl ?? document.getElementById(fileAnchorId(path));
+      if (el) {
+        const target = threadEl ? Math.round(window.innerHeight * 0.3) : 8;
+        const top = Math.round(el.getBoundingClientRect().top);
+        if (Math.abs(top - target) > 2) window.scrollBy(0, top - target);
+        stable = top === lastTop ? stable + 1 : 0;
+        lastTop = top;
+      }
+      if (stable < 3 && Date.now() - startedAt < 2500) setTimeout(settle, 60);
+    };
+    requestAnimationFrame(settle);
+  };
+
+  const openThreadCount = review.threads.filter((t) => t.status === "open").length;
+
   return (
     <>
       <TopBar />
@@ -298,7 +320,29 @@ function ReviewView({ id }: { id: string }) {
 
       <ReviewActions reviewId={id} status={review.status} notes={review.notes} listening={listening} onChanged={refresh} />
 
-      <div className="review-body">
+      <div className="review-tabs">
+        <button className={`review-tab${tab === "overview" ? " active" : ""}`} onClick={() => switchTab("overview")}>
+          Overview
+          {openThreadCount > 0 && <span className="tab-count">{openThreadCount}</span>}
+        </button>
+        <button className={`review-tab${tab === "details" ? " active" : ""}`} onClick={() => switchTab("details")}>
+          Details
+        </button>
+      </div>
+
+      <div className={tab === "overview" ? undefined : "tab-hidden"}>
+        <OverviewTab
+          reviewId={id}
+          revisionNumber={revision.number}
+          threads={review.threads}
+          claudeWorking={claudeWorking}
+          active={tab === "overview"}
+          onChanged={refresh}
+          onJumpToThread={jumpToThread}
+        />
+      </div>
+
+      <div className={`review-body${tab === "details" ? "" : " tab-hidden"}`}>
         <FileTree
           groups={groups}
           threads={review.threads}
