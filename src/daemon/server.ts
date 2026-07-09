@@ -9,6 +9,7 @@ import {
   CreateReviewRequestSchema,
   CreateThreadRequestSchema,
   EditCommentRequestSchema,
+  FocusThreadRequestSchema,
   GetFileContentRequestSchema,
   GetReviewRequestSchema,
   PostNoteRequestSchema,
@@ -27,6 +28,7 @@ import {
   createReview,
   createThread,
   editComment,
+  focusThread,
   getFileContent,
   getPresence,
   getReview,
@@ -146,6 +148,15 @@ function registerReviewWriteRoutes(app: Hono, repoRoot: string, prefix: string, 
     });
     if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
     return handled(c, () => acknowledgeThread(repoRoot, parsed.data, actor));
+  });
+
+  app.post(`${prefix}/reviews/:idOrTitle/threads/:threadId/focus`, async (c) => {
+    const parsed = FocusThreadRequestSchema.safeParse({
+      review: c.req.param("idOrTitle"),
+      thread: c.req.param("threadId"),
+    });
+    if (!parsed.success) return c.json({ error: parsed.error.message }, 400);
+    return handled(c, () => focusThread(repoRoot, parsed.data, actor));
   });
 
   app.post(`${prefix}/reviews/:idOrTitle/notes`, async (c) => {

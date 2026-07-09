@@ -147,6 +147,26 @@ server.registerTool(
 );
 
 server.registerTool(
+  "focus_thread",
+  {
+    description:
+      "Declare the thread you're turning your attention to — the reviewer sees 'Claude is thinking…' on it (instead of the passive 'Waiting for Claude…'). Call it right before working a thread's feedback. Focus moves when you call this on another thread, and clears when you reply to, close, or acknowledge the focused thread.",
+    inputSchema: {
+      review: z.string(),
+      thread: z.string(),
+    },
+  },
+  async (args) => {
+    try {
+      const result = await daemon.focusThread(args);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result) }] };
+    } catch (err) {
+      return toToolError(err);
+    }
+  },
+);
+
+server.registerTool(
   "acknowledge_thread",
   {
     description:

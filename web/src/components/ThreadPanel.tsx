@@ -45,10 +45,13 @@ export function ThreadPanel({
       ? STATUS_TRANSITIONS.filter((t) => t.status !== "open")
       : STATUS_TRANSITIONS.filter((t) => t.status === "open");
 
-  // The thread is flagged as awaiting Claude (server-tracked: set by user
-  // activity, cleared when Claude replies or acknowledges) and a Claude session
-  // is actively working — so show the "replying…" spinner.
-  const showReplying = claudeWorking && thread.awaitingClaude;
+  // Two indicator levels while a Claude session is actively working:
+  // "thinking" — Claude has declared this thread his current focus (via the
+  // focus_thread tool); "waiting" — the thread has unhandled user input but
+  // Claude hasn't turned to it yet. Both server-tracked; both meaningless
+  // without a live session, hence the claudeWorking gate.
+  const showThinking = claudeWorking && thread.claudeThinking;
+  const showWaiting = claudeWorking && thread.awaitingClaude && !showThinking;
 
   return (
     <div className={`thread-panel severity-${thread.severity} status-${thread.status} ${expanded ? "" : "collapsed"}`}>
@@ -99,10 +102,16 @@ export function ThreadPanel({
         </div>
       ))}
 
-      {showReplying && (
+      {showThinking && (
         <div className="comment replying">
           <span className="spinner" />
-          <span>Claude is replying…</span>
+          <span>Claude is thinking…</span>
+        </div>
+      )}
+      {showWaiting && (
+        <div className="comment waiting">
+          <span className="wait-dot" />
+          <span>Waiting for Claude…</span>
         </div>
       )}
 

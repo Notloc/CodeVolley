@@ -2,6 +2,8 @@ import { generateReviewId } from "../shared/id.js";
 import {
   type AcknowledgeThreadRequest,
   type AcknowledgeThreadResponse,
+  type FocusThreadRequest,
+  type FocusThreadResponse,
   type CloseReviewRequest,
   type CloseReviewResponse,
   type CreateReviewRequest,
@@ -221,6 +223,7 @@ export async function createThread(
     // A user-authored thread needs Claude's attention; a Claude review comment
     // is awaiting the user, not Claude.
     awaitingClaude: actor === "user",
+    claudeThinking: false,
     _commentSeq: 0,
   };
   const comment: Comment = { id: nextCommentId(thread), author: actor, body: req.body, createdAt: new Date().toISOString() };
@@ -243,6 +246,8 @@ export async function reply(repoRoot: string, req: ReplyRequest, actor: Actor): 
   // A user reply reopens the need for Claude's attention; a Claude reply clears
   // it (it's now the user's turn).
   thread.awaitingClaude = actor === "user";
+  // A Claude reply is the natural end of "thinking" on the thread.
+  if (actor === "claude") thread.claudeThinking = false;
   appendEvent(review, actor, "comment_added", { thread: ThreadSchema.parse(thread), comment });
 
   if (req.status !== undefined && req.status !== thread.status) {
@@ -296,6 +301,9 @@ export async function setStatus(repoRoot: string, req: SetStatusRequest, actor: 
   // A resolved/wontfix thread no longer awaits Claude; a user reopening one is
   // asking for Claude again.
   thread.awaitingClaude = thread.status === "open" && actor === "user";
+  // Claude acting on the status ends his thinking; so does the thread closing
+  // out from under him.
+  if (actor === "claude" || thread.status !== "open") thread.claudeThinking = false;
   appendEvent(review, actor, "thread_status_changed", {
     thread: thread.id,
     status: thread.status,
@@ -320,6 +328,7 @@ export async function acknowledgeThread(
   const thread = findThreadOrThrow(review, req.thread);
 
   thread.awaitingClaude = false;
+  thread.claudeThinking = false;
   appendEvent(review, actor, "thread_attention_cleared", {
     thread: thread.id,
     path: thread.anchor.path,
@@ -328,6 +337,40 @@ export async function acknowledgeThread(
 
   await writeReview(repoRoot, review);
   return { thread: thread.id, awaitingClaude: thread.awaitingClaude };
+}
+
+// One thread at a time: focusing a thread steals focus from every other.
+// Flip to false if parallel sessions/subagents ever work threads
+// concurrently — everything downstream already handles multiple flags.
+const SINGLE_FOCUS = true;
+
+// Claude declares the thread he's turning his attention to (design: the UI's
+// "Claude is thinking…" indicator). The flag ends when he replies, closes,
+// or acknowledges the thread — or focuses the next one.
+export async function focusThread(repoRoot: string, req: FocusThreadRequest, actor: Actor): Promise<FocusThreadResponse> {
+  const review = await resolveAndReadReview(repoRoot, req.review);
+  assertWritable(review);
+  const thread = findThreadOrThrow(review, req.thread);
+
+  const unfocused: string[] = [];
+  if (SINGLE_FOCUS) {
+    for (const other of review.threads) {
+      if (other.id !== thread.id && other.claudeThinking) {
+        other.claudeThinking = false;
+        unfocused.push(other.id);
+      }
+    }
+  }
+  thread.claudeThinking = true;
+  appendEvent(review, actor, "thread_focused", {
+    thread: thread.id,
+    path: thread.anchor.path,
+    title: thread.title,
+    unfocused,
+  });
+
+  await writeReview(repoRoot, review);
+  return { thread: thread.id, claudeThinking: true, unfocused };
 }
 
 export async function postNote(repoRoot: string, req: PostNoteRequest, actor: Actor): Promise<PostNoteResponse> {

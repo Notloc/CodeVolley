@@ -105,6 +105,8 @@ export function subscribeToReviewStream(reviewId: string, after: number, onEvent
     "comment_added",
     "comment_edited",
     "thread_status_changed",
+    "thread_attention_cleared",
+    "thread_focused",
     "note_added",
     "revision_submitted",
     "user_done",

@@ -37,6 +37,7 @@ export interface Thread {
   suggestion: string | null;
   comments: Comment[];
   awaitingClaude: boolean;
+  claudeThinking: boolean;
 }
 
 export interface Note {
@@ -84,6 +85,7 @@ export type EventType =
   | "comment_edited"
   | "thread_status_changed"
   | "thread_attention_cleared"
+  | "thread_focused"
   | "note_added"
   | "revision_submitted"
   | "user_done"

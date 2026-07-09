@@ -115,6 +115,20 @@ export type AcknowledgeThreadRequest = z.infer<typeof AcknowledgeThreadRequestSc
 export const AcknowledgeThreadResponseSchema = z.object({ thread: z.string(), awaitingClaude: z.boolean() });
 export type AcknowledgeThreadResponse = z.infer<typeof AcknowledgeThreadResponseSchema>;
 
+export const FocusThreadRequestSchema = z.object({
+  review: z.string().min(1),
+  thread: z.string().min(1),
+});
+export type FocusThreadRequest = z.infer<typeof FocusThreadRequestSchema>;
+
+export const FocusThreadResponseSchema = z.object({
+  thread: z.string(),
+  claudeThinking: z.boolean(),
+  // Threads that lost focus because of this call (single-focus mode).
+  unfocused: z.array(z.string()),
+});
+export type FocusThreadResponse = z.infer<typeof FocusThreadResponseSchema>;
+
 export const PostNoteRequestSchema = z.object({
   review: z.string().min(1),
   kind: NoteKindSchema,

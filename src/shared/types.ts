@@ -32,6 +32,7 @@ export const EventTypeSchema = z.enum([
   "comment_edited",
   "thread_status_changed",
   "thread_attention_cleared",
+  "thread_focused",
   "note_added",
   "revision_submitted",
   "user_done",
@@ -72,6 +73,12 @@ export const ThreadSchema = z.object({
   // acknowledges. Independent of status (open/resolved/wontfix). Defaulted so
   // reviews persisted before this field load cleanly.
   awaitingClaude: z.boolean().default(false),
+  // True while Claude has declared this thread his current focus (via the
+  // focus_thread tool) — drives the UI's active "Claude is thinking…"
+  // indicator, vs the passive "Waiting for Claude…" of awaitingClaude.
+  // Cleared when Claude replies, closes, or acknowledges the thread, or
+  // focuses another one (see SINGLE_FOCUS in reviews-service).
+  claudeThinking: z.boolean().default(false),
 });
 export type Thread = z.infer<typeof ThreadSchema>;
 

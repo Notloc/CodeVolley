@@ -27,6 +27,9 @@ import {
   type AcknowledgeThreadRequest,
   type AcknowledgeThreadResponse,
   AcknowledgeThreadResponseSchema,
+  type FocusThreadRequest,
+  type FocusThreadResponse,
+  FocusThreadResponseSchema,
   type SetStatusRequest,
   type SetStatusResponse,
   SetStatusResponseSchema,
@@ -137,6 +140,14 @@ export async function acknowledgeThread(req: AcknowledgeThreadRequest): Promise<
     jsonPost(req),
   );
   return AcknowledgeThreadResponseSchema.parse(body);
+}
+
+export async function focusThread(req: FocusThreadRequest): Promise<FocusThreadResponse> {
+  const body = await callDaemon(
+    `/internal/reviews/${encodeURIComponent(req.review)}/threads/${encodeURIComponent(req.thread)}/focus`,
+    jsonPost(req),
+  );
+  return FocusThreadResponseSchema.parse(body);
 }
 
 export async function postNote(req: PostNoteRequest): Promise<PostNoteResponse> {
