@@ -13,6 +13,8 @@ CodeVolley is **two processes**, not one:
 
 The daemon owns the repo; the adapter is stateless and just talks to `localhost:4877`. So pointing the daemon at a different repo is all you need — Claude's tools follow.
 
+The third piece is the **reviewer skill** — and it's core, not garnish. The whole exchange is driven from Claude Code over MCP: the shipped [`interactive-review`](claude_skill/interactive-review) skill is what turns a Claude session into the reviewer (what to look for, how findings become threads, the reply/fix/resolve loop). The web UI is your side of the volley; without the skill installed, Claude has the tools but not the choreography. Install it in [Reviewer skill](#reviewer-skill) below.
+
 ## Prerequisites
 
 - **Node.js 18+**
@@ -81,7 +83,7 @@ The daemon must be running for the tools to work; if it's down, a tool call fail
 
 ## Reviewer skill
 
-The repo ships the reviewer-side Claude skill at [`claude_skill/interactive-review/`](claude_skill/interactive-review) — it drives the review (what to look for, how findings become threads, the reply/fix/resolve loop) on top of the MCP tools.
+The repo ships the reviewer-side Claude skill at [`claude_skill/interactive-review/`](claude_skill/interactive-review) — it drives the review (what to look for, how findings become threads, the reply/fix/resolve loop) on top of the MCP tools. **Treat this as part of setup, not an optional extra** — the MCP tools alone give Claude the ability to post threads, but the skill is what makes a session behave like a reviewer.
 
 Install it into Claude Code by copying or symlinking that folder into a skills directory — `~/.claude/skills/` (personal) or `<repo>/.claude/skills/` (project):
 
@@ -89,14 +91,26 @@ Install it into Claude Code by copying or symlinking that folder into a skills d
 ln -s /absolute/path/to/CodeVolley/claude_skill/interactive-review ~/.claude/skills/interactive-review
 ```
 
-Then, with the daemon running and the `codevolley` MCP server connected, start a session with `/interactive-review` (optionally `/interactive-review <branch>`, or `/interactive-review diff` for uncommitted changes only) or just ask Claude to "review this with me".
+With the skill installed, all three pieces are in place — see [Running a review](#running-a-review).
 
-## Typical flow
+## Running a review
 
-1. Start the daemon in your repo (`npm run serve`), keep the browser open at `http://localhost:4877`.
-2. In Claude Code (with the adapter registered), ask Claude to review your changes. It computes a merge-base, creates a review, and posts inline threads.
-3. Read/reply/resolve threads in the web UI. Claude picks up your replies via its wait loop and responds. Use **Fix it!** on a thread to ask Claude to just take the obvious action.
-4. State persists in `.codevolley/`, so a later session resumes the same review.
+With all three pieces in place (daemon up, adapter registered, skill installed):
+
+1. Start the daemon in your repo (`codevolley serve`) and keep a browser tab on `http://localhost:4877`.
+2. In Claude Code, start the review: `/interactive-review` (optionally `/interactive-review <branch>`, or `/interactive-review diff` for uncommitted changes only) — or just ask Claude to "review this with me". Claude computes a merge-base, creates the review, and starts posting inline threads; the review list page picks the new review up automatically.
+3. Work the threads in the web UI: read, reply, resolve, or hit **Fix it!** to tell Claude to just take the obvious action. Post a review-level note to steer ("skip style nits"). Between your actions Claude parks in a wait loop — the UI shows *Claude is listening* — and your replies wake him.
+4. After Claude makes fixes, he submits a new revision; threads re-anchor to the new code and anything that no longer applies is filed under the file's **outdated** badge.
+5. Everything persists in `.codevolley/` at the repo root, so a later Claude session can resume the same review.
+
+### Keep the Claude Code window in view
+
+The web UI is only **half the loop** — the reviewer is a live Claude Code session in your terminal, and it needs occasional supervision:
+
+- **Tool approvals**: MCP tool calls can sit waiting for permission in the Claude Code window. Until you approve, nothing moves — the web UI just shows threads waiting.
+- **Idle timeouts**: after a long enough quiet stretch, Claude Code ends its wait — the session disconnects and stops picking up your replies. If threads sit at *Waiting for Claude…* longer than expected, check the terminal and nudge the session ("continue the review") or re-run `/interactive-review` to resume.
+
+In short: review with the browser and the terminal both visible. The UI's presence line (*Claude is listening / working*) is a hint, not a guarantee — the terminal is the source of truth.
 
 ## Data & persistence
 
