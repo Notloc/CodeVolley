@@ -9,7 +9,7 @@ A collaborative review session: findings are delivered as line-anchored threads 
 
 **Prerequisite**: the CodeVolley MCP server tools (`mcp__codevolley__*`). If they aren't available, stop and tell the user the CodeVolley server isn't connected — don't fall back to a report-style review unless they ask.
 
-Two tools exist beyond the core contract: `reopen_review` (resume a closed review explicitly) and `edit_comment` — use the latter sparingly: editing one of your comments **truncates every later comment in the thread**, including the user's replies. Prefer a fresh `reply` to correct yourself; only edit when nothing follows the comment.
+Three tools exist beyond the core contract: `reopen_review` (resume a closed review explicitly), `focus_thread` (mark the thread you're actively working — see §4), and `edit_comment` — use the latter sparingly: editing one of your comments **truncates every later comment in the thread**, including the user's replies. Prefer a fresh `reply` to correct yourself; only edit when nothing follows the comment.
 
 **Methodology source**: Read [references/review-methodology.md](references/review-methodology.md) before starting. It defines *what to look for* — Pass 1 (technical rules) and Pass 2 (semantics subagent). This SKILL.md defines how findings are delivered and what happens after.
 
@@ -42,6 +42,7 @@ Work file-by-file per the methodology's Pass 1 rules. The delivery rules:
 
 - **Verify before posting.** A thread is a claim the user will act on. Do the grep/context-reading first; never post a hunch and verify later. If you must raise something unverified, make it severity `question`.
 - **One finding, one thread.** Post with `create_thread` the moment a finding is verified — don't batch per file. `title` is a short imperative summary; `body` explains what's wrong, *why it matters here*, and the concrete fix. Use the `suggestion` field only when the replacement for the anchored range is small and you're certain of it.
+- **Cross-reference threads by id.** A `t-x` mention in any comment or note body renders as a clickable link to that thread in the UI — so when findings relate (same root cause, one fix covering several, "folded into t-x"), reference them by id freely rather than describing them.
 - **Severity mapping**: should-fix-before-merge → `issue`; non-blocking improvement or drive-by refactoring idea → `suggestion`; you need information to judge → `question`; trivia → `nit`; genuinely good work → `praise` (use it — this is a collaboration, not an audit).
 - **Anchor precisely.** Anchor to the offending line(s) on the `NEW` side (use `OLD` only for deleted code). Ranges (`end_line`) for multi-line findings. Line numbers go stale fast in a live session — always verify against the *current* file (grep for the target content) immediately before posting, especially for findings computed from diff hunks or returned by the semantics subagent, whose numbers date from when it read the files.
 - **Drain between files.** After each file, call `wait_for_activity({ after: <cursor>, timeout_seconds: 0 })` — an instant poll. Handle anything pending (see §4) before moving on; early replies often redirect the rest of the review. A user `note` is a steering directive — obey it (e.g. "skip style nits" means stop posting nits).
@@ -66,6 +67,8 @@ wait_for_activity({ after: <cursor>, timeout_seconds: 90 })
 Advance the cursor to `lastSeq` after every call.
 
 **Every user touch on a thread sets its `awaitingClaude` flag; your job is to drain it.** Replying auto-clears it. For user messages that warrant no reply — praise, "thanks", simple acknowledgements — call `acknowledge_thread` instead of posting a filler comment. Don't leave a thread awaiting: the flag drives a "Claude is replying…" spinner in the UI, so an unhandled thread looks perpetually pending to the user. (Resolving/wontfixing also clears it.)
+
+**Signal which thread you're on.** The moment you pick a thread to work — right after `wait_for_activity` returns, or as you take each item off the awaiting queue when resuming (§5) — call `focus_thread({ review, thread })` *before* investigating or editing. It highlights that thread in the UI as the one you're actively working, so the user can tell it apart from the rest of the queue. No clearing call afterwards — replying, resolving, or acknowledging clears it. The server allows only **one** active thread at a time (no subagent support yet): focusing a new thread silently unfocuses the previous one, so focusing several up front leaves only the last highlighted. Work serially — focus, handle, then focus the next.
 
 Handle each user event:
 

@@ -91,6 +91,14 @@ Three rules to check:
 - **getByQuery vs getMany**: Use `getByQuery` when a query is guaranteed to return at most one row (returns entity or null). Use `getMany` for multi-row results.
 - **insertAndGet vs insert**: Use `insertAndGet(scope, entity)` when the caller needs the persisted entity back (with DB-generated fields like `id`). Use plain `insert` only when the return value isn't needed.
 
+#### Query Style
+
+Repository queries are built the house way — when unsure, compare against an established repo like `FfvEventRepository`:
+
+- WHERE fragments go through `buildQueryWhere(...)`; list membership uses the `in(column, items)` / `notIn(column, items)` helpers. These render ` false ` / ` true ` for empty collections, so empty-list guards before the query are unnecessary — flag them.
+- Raw Postgres constructs are red flags: `unnest(...)`, `= ANY(?::bigint[])`, array-cast parameters. If a query needs them, question the shape of the query before accepting the syntax.
+- Row-wise SQL that re-implements a rule already expressed in Java (validation, overlap/comparison logic) is a duplication smell — when the row set involved is bounded and small, prefer a simple fetch plus an in-memory comparison so the rule lives in one place. But this is a judgment call on volume: some deployments (e.g. CNRL) carry huge data sets and build company-wide full-year reports, and there the work belongs in SQL. Weigh how many rows the fetch could realistically return before recommending either direction.
+
 ### 8. Service Layer
 
 Don't wrap trivial repository reads in a service method. If a service method just delegates to a single repo call with no business logic added, the caller should use the repo directly.
@@ -196,6 +204,7 @@ The `ErrorCollector` pattern has a few invariants that are easy to violate:
 
 #### Naming and Comments
 
+- **Database operation vocabulary**: `insert` / `update` / `save` are the preferred verbs for persistence operations, matching the repository API (`save` = upsert). Flag synonyms like "persist", "store", "write". For entities already in the database, prefer "existing" over "persisted" (e.g. `existing`, `existingById`); for what a request sent in, "submitted" works well as the counterpart.
 - **Boolean naming**: Flexible — `is`/`has`/`should`/`can` prefixes are encouraged but not required. Names like `active`, `enabled`, `visible` are fine.
 - **Field comments**: Comment non-obvious fields in model classes (where the name + type doesn't convey purpose). Pay special attention to *pairs* of related fields whose relationship is non-obvious — if two fields appear to track overlapping state, a comment should explain why both exist and when each is the source of truth. But if a field needs a comment, also consider whether a better name would eliminate the need for one.
 - **No TODOs in new code**: New code shouldn't ship with TODO or FIXME comments. Either address it now or create a ticket. Flag these mainly as a reminder.
@@ -247,58 +256,30 @@ Spawn the subagent with `subagent_type: "general-purpose"` and the following pro
 ```
 You are reviewing Java code changes for naming quality, semantic clarity, and communication.
 This is NOT a technical review — bugs, test coverage, and style conventions are handled separately.
-Your job is to read the code as a human would and flag anything where the words don't accurately
-communicate what the code does.
+Read the code as a human would and flag anywhere the words don't accurately communicate what the
+code does:
 
-## What to look for
+- Vague verbs ("process", "handle", "link", "manage") where a precise verb exists — the right verb
+  encodes constraints ("claim" implies exclusivity; "reconcile" implies two-sided comparison).
+- Names that promise more or less than the method delivers, or are too generic for their one consumer.
+- Javadoc/comments that diverge from what the code actually does — read the code, not just the doc.
+- The same concept named differently in different places; names suggesting the wrong type or cardinality.
+- Comments compensating for weak names; boolean parameters unclear at the call site.
 
-### Method and variable naming
-- Vague, low-information verbs: "link", "process", "manage", "handle", "do", "run", "execute"
-  when a more precise verb exists. The right verb encodes constraints — "claim" implies exclusivity
-  that "link" does not; "reconcile" implies two-sided comparison that "sync" does not.
-- Names that are too generic for their actual scope. If a method only serves one specific consumer
-  or context, the name should hint at that — a generic name invites misuse.
-- Names that promise more or less than the method delivers.
-
-### Javadoc and comment accuracy
-- Comments that describe behavior the code doesn't actually have.
-- Comments that use terminology not reflected in the code (or vice versa).
-- Javadoc on a method that was true when written but no longer matches the implementation.
-  Read the actual code, not just the doc — flag divergence.
-
-### Semantic consistency
-- The same concept referred to by different names in different places (e.g., "linked" in one method,
-  "assigned" in another, "attached" in a third — when they all mean the same thing).
-- Fields or parameters whose names suggest a different type or cardinality than they actually have.
-
-### Communication through code structure
-- A method that does something non-obvious where a better name would eliminate the need for
-  the explanation. Comments compensating for weak names are a sign.
-- Return types or parameter types that obscure the method's contract.
-- Boolean parameters that don't clearly communicate what true/false mean at the call site.
-
-## What NOT to flag
-- Style issues (formatting, braces, import order)
-- Technical bugs, null safety, performance
-- Missing tests
-- Anything that requires running or grepping the codebase
+Do NOT flag style/formatting, bugs, performance, or missing tests. Don't manufacture issues —
+"no findings" is a valid result.
 
 ## Output format
 
-Group by file. Use severity levels:
-- **SHOULD FIX** — Name is misleading or vague enough to cause confusion
-- **CONSIDER** — A better name exists but the current one isn't wrong
-
-Format:
+Group by file, with exact line numbers from the current files:
 ### path/to/File.java
-1. **[SHOULD FIX]** Line 42 — Descriptive title
+1. **[SHOULD FIX]** Line 42 — Descriptive title       (misleading enough to cause confusion)
    What's unclear and what would be better.
+2. **[CONSIDER]** Line 50 — Descriptive title          (a better name exists; current isn't wrong)
 
-If there are no findings, say so. Don't manufacture issues.
+## The code to review
 
-## The diff to review
-
-<paste diff or instructions to read files here>
+<file list and any domain context; instruct the subagent to read the files directly>
 ```
 
 **Important**: The subagent must read files directly to get sufficient context — don't just paste isolated diff hunks. For each file with changes, have it read the full class (or at minimum the changed methods plus their surrounding context). Naming issues are impossible to judge from a narrow window.
