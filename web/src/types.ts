@@ -113,4 +113,9 @@ export interface FileContent {
   oldPath?: string;
   oldContent: string | null;
   newContent: string | null;
+  // Large files ship a unified diff here instead of full content; oldLines /
+  // newLines are the real file lengths, for labelling the skipped-gap rows.
+  patch?: string | null;
+  oldLines?: number | null;
+  newLines?: number | null;
 }

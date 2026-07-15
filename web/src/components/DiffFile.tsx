@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import * as api from "../api.js";
 import { buildUnifiedRows, type UnifiedRow } from "../diffRows.js";
+import { parsePatch } from "../patchRows.js";
 import type { FileContent, RevisionFile, Severity, Side, Thread } from "../types.js";
 import { ThreadComposer } from "./ThreadComposer.js";
 import { ThreadPanel } from "./ThreadPanel.js";
@@ -57,10 +58,19 @@ export function DiffFile({
     api.getFileContent(reviewId, latestRevision.current, file.path).then(setContent);
   }, [reviewId, file.path, contentKey]);
 
+  // Large files arrive as a stored unified diff instead of full content — parse
+  // it into the same row shape rather than diffing (there's no full content to
+  // diff). Its skipped-line gaps aren't expandable: the bulk was never stored.
+  const parsed = useMemo(() => (content?.patch != null ? parsePatch(content.patch) : null), [content]);
+
   // Diffing is the expensive part of a render — memoize on the fetched
   // content so live-review refreshes (new comments etc.) don't re-diff
   // every mounted file.
-  const rows = useMemo(() => (content ? buildUnifiedRows(content.oldContent ?? "", content.newContent ?? "") : []), [content]);
+  const rows = useMemo(() => {
+    if (!content) return [];
+    if (parsed) return parsed.rows;
+    return buildUnifiedRows(content.oldContent ?? "", content.newContent ?? "");
+  }, [content, parsed]);
 
   // Reveal more of a collapsed gap: `STEP` lines from one end, or (shift-click)
   // the whole thing. `len` is the gap's total hidden length.
@@ -111,43 +121,63 @@ export function DiffFile({
     );
   }
 
-  // A row "anchors" visible context if it's a change, carries a comment, or is
-  // the open composer target — never collapse those or their surrounding lines.
-  const anchored = rows.map((row) => row.kind !== "unchanged" || threadsAt(row).length > 0 || isComposerAt(row));
-  const keep = rows.map((_, i) => {
-    for (let j = Math.max(0, i - CONTEXT); j <= Math.min(rows.length - 1, i + CONTEXT); j++) {
-      if (anchored[j]) return true;
-    }
-    return false;
-  });
-
-  // Walk the rows into a render list: kept rows verbatim; each run of hidden
-  // rows shows whatever's been revealed from its top and bottom, with a gap
-  // control in between for the still-hidden middle. Runs of one line aren't
-  // worth hiding, so they render inline.
-  type Item = { kind: "row"; index: number } | { kind: "gap"; key: number; hidden: number; len: number };
+  // Three item kinds: a rendered row; an expandable "gap" (full-content files,
+  // where the hidden lines are stored and can be dug into); and a static
+  // "staticgap" (hunked large files, where the skipped bulk was never stored so
+  // there's nothing to reveal).
+  type Item =
+    | { kind: "row"; index: number }
+    | { kind: "gap"; key: number; hidden: number; len: number }
+    | { kind: "staticgap"; key: number; count: number };
   const items: Item[] = [];
-  for (let i = 0; i < rows.length; ) {
-    if (keep[i]) {
+
+  if (parsed) {
+    // Hunked file: emit rows verbatim with the stored patch's fixed gaps, plus
+    // a trailing gap down to the file's real end.
+    for (let i = 0; i < rows.length; i++) {
+      const skipped = parsed.gaps.get(i);
+      if (skipped) items.push({ kind: "staticgap", key: i, count: skipped });
       items.push({ kind: "row", index: i });
-      i++;
-      continue;
     }
-    const start = i;
-    while (i < rows.length && !keep[i]) i++;
-    const end = i - 1;
-    const len = end - start + 1;
-    if (len <= 1) {
-      for (let k = start; k <= end; k++) items.push({ kind: "row", index: k });
-      continue;
+    const tail = (content.oldLines ?? parsed.endOldLine) - parsed.endOldLine;
+    if (tail > 0) items.push({ kind: "staticgap", key: rows.length, count: tail });
+  } else {
+    // A row "anchors" visible context if it's a change, carries a comment, or is
+    // the open composer target — never collapse those or their surrounding lines.
+    const anchored = rows.map((row) => row.kind !== "unchanged" || threadsAt(row).length > 0 || isComposerAt(row));
+    const keep = rows.map((_, i) => {
+      for (let j = Math.max(0, i - CONTEXT); j <= Math.min(rows.length - 1, i + CONTEXT); j++) {
+        if (anchored[j]) return true;
+      }
+      return false;
+    });
+
+    // Walk the rows into a render list: kept rows verbatim; each run of hidden
+    // rows shows whatever's been revealed from its top and bottom, with a gap
+    // control in between for the still-hidden middle. Runs of one line aren't
+    // worth hiding, so they render inline.
+    for (let i = 0; i < rows.length; ) {
+      if (keep[i]) {
+        items.push({ kind: "row", index: i });
+        i++;
+        continue;
+      }
+      const start = i;
+      while (i < rows.length && !keep[i]) i++;
+      const end = i - 1;
+      const len = end - start + 1;
+      if (len <= 1) {
+        for (let k = start; k <= end; k++) items.push({ kind: "row", index: k });
+        continue;
+      }
+      const r = reveals.get(start) ?? { top: 0, bottom: 0 };
+      const top = Math.min(r.top, len);
+      const bottom = Math.min(r.bottom, len - top);
+      const hidden = len - top - bottom;
+      for (let k = start; k < start + top; k++) items.push({ kind: "row", index: k });
+      if (hidden > 0) items.push({ kind: "gap", key: start, hidden, len });
+      for (let k = end - bottom + 1; k <= end; k++) items.push({ kind: "row", index: k });
     }
-    const r = reveals.get(start) ?? { top: 0, bottom: 0 };
-    const top = Math.min(r.top, len);
-    const bottom = Math.min(r.bottom, len - top);
-    const hidden = len - top - bottom;
-    for (let k = start; k < start + top; k++) items.push({ kind: "row", index: k });
-    if (hidden > 0) items.push({ kind: "gap", key: start, hidden, len });
-    for (let k = end - bottom + 1; k <= end; k++) items.push({ kind: "row", index: k });
   }
 
   function renderRow(i: number) {
@@ -192,6 +222,14 @@ export function DiffFile({
         {items.map((item) =>
           item.kind === "row" ? (
             renderRow(item.index)
+          ) : item.kind === "staticgap" ? (
+            <div key={`sgap-${item.key}`} className="full-row">
+              <div className="pinned expander-row static-gap" title="Large file — only changed regions are stored">
+                <span className="expander-label">
+                  {item.count} unchanged {item.count === 1 ? "line" : "lines"} not shown
+                </span>
+              </div>
+            </div>
           ) : (
             <div key={`gap-${item.key}`} className="full-row">
               <div className="pinned expander-row">

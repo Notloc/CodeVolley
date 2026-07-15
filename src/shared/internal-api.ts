@@ -190,8 +190,14 @@ export const GetFileContentResponseSchema = z.object({
   path: z.string(),
   status: RevisionFileSchema.shape.status,
   oldPath: z.string().optional(),
+  // Full content for a normal file. For a large "hunked" file these are null
+  // and `patch` carries a unified diff instead, with `oldLines`/`newLines`
+  // giving the real file lengths so gaps can be labelled.
   oldContent: z.string().nullable(),
   newContent: z.string().nullable(),
+  patch: z.string().nullable().default(null),
+  oldLines: z.number().int().nonnegative().nullable().default(null),
+  newLines: z.number().int().nonnegative().nullable().default(null),
 });
 export type GetFileContentResponse = z.infer<typeof GetFileContentResponseSchema>;
 

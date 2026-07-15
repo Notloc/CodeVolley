@@ -17,9 +17,16 @@ import {
 export const StoredRevisionFileSchema = RevisionFileSchema.extend({
   // Refs into the review's content-addressed `blobs` pool, resolved via
   // content-store.ts. null for added (oldRef), deleted (newRef), or binary
-  // (both) files.
+  // (both) files — and both null for a large "hunked" file, whose content
+  // lives only as a unified diff in `patchRef` (see git.ts LARGE_FILE_BYTES).
   oldRef: z.string().nullable(),
   newRef: z.string().nullable(),
+  // Set only for hunked files: a ref to the stored unified diff, plus the real
+  // line counts (the patch shows only slivers) for thread range-checking.
+  // Defaulted so files captured before hunking existed still parse.
+  patchRef: z.string().nullable().default(null),
+  oldLines: z.number().int().nonnegative().nullable().default(null),
+  newLines: z.number().int().nonnegative().nullable().default(null),
 });
 export type StoredRevisionFile = z.infer<typeof StoredRevisionFileSchema>;
 

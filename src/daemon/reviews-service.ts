@@ -100,6 +100,9 @@ function toStoredFiles(files: CapturedFile[], blobs: Record<string, string>): St
     contentHash: f.contentHash,
     oldRef: internContent(blobs, f.oldContent),
     newRef: internContent(blobs, f.newContent),
+    patchRef: internContent(blobs, f.patch),
+    oldLines: f.oldLines,
+    newLines: f.newLines,
   }));
 }
 
@@ -215,10 +218,12 @@ export async function createThread(
 
   const side = req.side ?? "NEW";
   const content = resolveContent(review.blobs, side === "NEW" ? file.newRef : file.oldRef);
-  if (content === null) {
+  // A hunked large file has no full content stored; its real line count was
+  // captured alongside the patch, so range-checking still works.
+  const lineCount = content !== null ? content.split("\n").length : side === "NEW" ? file.newLines : file.oldLines;
+  if (lineCount === null) {
     throw new ValidationError(`"${req.path}" has no ${side} content in revision ${latestRevision.number} (file is ${file.status}).`);
   }
-  const lineCount = content.split("\n").length;
   if (req.line < 1 || req.line > lineCount) {
     throw new ValidationError(`Line ${req.line} is out of range for "${req.path}" (${side} side has ${lineCount} lines).`);
   }
@@ -576,6 +581,11 @@ export async function getFileContent(repoRoot: string, req: GetFileContentReques
     oldPath: file.oldPath,
     oldContent: resolveContent(review.blobs, file.oldRef),
     newContent: resolveContent(review.blobs, file.newRef),
+    // Present for large files: the unified diff to render in place of full
+    // content, plus real line counts for the "N lines not shown" separators.
+    patch: resolveContent(review.blobs, file.patchRef),
+    oldLines: file.oldLines,
+    newLines: file.newLines,
   };
 }
 
