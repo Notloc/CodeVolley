@@ -43,11 +43,18 @@ import {
 } from "../shared/types.js";
 import { appendEvent } from "./events.js";
 import { NotFoundError, ReviewClosedError, ValidationError } from "./errors.js";
-import { captureDiff, GitError } from "./git.js";
+import { internContent, resolveContent } from "./content-store.js";
+import { type CapturedFile, captureDiff, GitError } from "./git.js";
 import { nextCommentId, nextNoteId, nextThreadId } from "./ids.js";
 import { readIndex, readReview, resolveReviewId, writeReview } from "./persistence.js";
 import { findAnchorLine } from "./reanchor.js";
-import { projectReview, type StoredReview, type StoredRevision, type StoredThread } from "./storage-types.js";
+import {
+  projectReview,
+  type StoredReview,
+  type StoredRevision,
+  type StoredRevisionFile,
+  type StoredThread,
+} from "./storage-types.js";
 import { isListening, isOnline, setListening, waitForReviewActivity } from "./waiters.js";
 
 export { GitError };
@@ -81,12 +88,28 @@ function findThreadOrThrow(review: StoredReview, threadId: string): StoredThread
   return thread;
 }
 
+// Turns a fresh capture into stored files, interning each side's content into
+// the review's shared blob pool (mutated in place). Files that didn't change
+// between revisions hash to the same ref and so cost nothing beyond the first
+// copy — see content-store.ts.
+function toStoredFiles(files: CapturedFile[], blobs: Record<string, string>): StoredRevisionFile[] {
+  return files.map((f) => ({
+    path: f.path,
+    status: f.status,
+    oldPath: f.oldPath,
+    contentHash: f.contentHash,
+    oldRef: internContent(blobs, f.oldContent),
+    newRef: internContent(blobs, f.newContent),
+  }));
+}
+
 export async function createReview(
   repoRoot: string,
   req: CreateReviewRequest,
   port: number,
 ): Promise<CreateReviewResponse> {
   const capture = await captureDiff(repoRoot, req.base, req.head, req.paths ?? []);
+  const blobs: Record<string, string> = {};
 
   let id: string;
   for (;;) {
@@ -104,7 +127,7 @@ export async function createReview(
     head: capture.resolvedHead,
     paths: req.paths ?? [],
     capturedAt: now,
-    files: capture.files,
+    files: toStoredFiles(capture.files, blobs),
   };
 
   const review: StoredReview = {
@@ -117,6 +140,7 @@ export async function createReview(
     threads: [],
     notes: [],
     events: [],
+    blobs,
     lastSeq: 0,
     _threadSeq: 0,
     _noteSeq: 0,
@@ -190,7 +214,7 @@ export async function createThread(
   }
 
   const side = req.side ?? "NEW";
-  const content = side === "NEW" ? file.newContent : file.oldContent;
+  const content = resolveContent(review.blobs, side === "NEW" ? file.newRef : file.oldRef);
   if (content === null) {
     throw new ValidationError(`"${req.path}" has no ${side} content in revision ${latestRevision.number} (file is ${file.status}).`);
   }
@@ -485,7 +509,7 @@ export async function submitRevision(repoRoot: string, req: SubmitRevisionReques
     head: capture.resolvedHead,
     paths,
     capturedAt: new Date().toISOString(),
-    files: capture.files,
+    files: toStoredFiles(capture.files, review.blobs),
   };
   review.revisions.push(newRevision);
 
@@ -501,7 +525,7 @@ export async function submitRevision(repoRoot: string, req: SubmitRevisionReques
     if (thread.anchorState === "outdated") continue; // design doc §3: already-outdated threads aren't reprocessed
 
     const sourceRevision = review.revisions.find((r) => r.number === thread.currentAnchor.revision);
-    const newLine = sourceRevision ? findAnchorLine(sourceRevision, newRevision, thread.currentAnchor) : null;
+    const newLine = sourceRevision ? findAnchorLine(sourceRevision, newRevision, thread.currentAnchor, review.blobs) : null;
 
     if (newLine === null) {
       thread.anchorState = "outdated";
@@ -550,8 +574,8 @@ export async function getFileContent(repoRoot: string, req: GetFileContentReques
     path: file.path,
     status: file.status,
     oldPath: file.oldPath,
-    oldContent: file.oldContent,
-    newContent: file.newContent,
+    oldContent: resolveContent(review.blobs, file.oldRef),
+    newContent: resolveContent(review.blobs, file.newRef),
   };
 }
 

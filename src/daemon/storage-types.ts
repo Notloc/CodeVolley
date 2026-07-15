@@ -15,9 +15,11 @@ import {
 // keys when parsing through the narrower public schema.
 
 export const StoredRevisionFileSchema = RevisionFileSchema.extend({
-  // null for added (oldContent), deleted (newContent), or binary (both) files.
-  oldContent: z.string().nullable(),
-  newContent: z.string().nullable(),
+  // Refs into the review's content-addressed `blobs` pool, resolved via
+  // content-store.ts. null for added (oldRef), deleted (newRef), or binary
+  // (both) files.
+  oldRef: z.string().nullable(),
+  newRef: z.string().nullable(),
 });
 export type StoredRevisionFile = z.infer<typeof StoredRevisionFileSchema>;
 
@@ -38,6 +40,10 @@ export const StoredReviewSchema = ReviewSchema.extend({
   revisions: z.array(StoredRevisionSchema),
   threads: z.array(StoredThreadSchema),
   events: z.array(EventSchema),
+  // Content-addressed pool shared by every revision's files — see
+  // content-store.ts. Defaulted so a review persisted before this field
+  // existed still parses (with no blobs, its files just resolve to null).
+  blobs: z.record(z.string(), z.string()).default({}),
   _threadSeq: z.number().int().nonnegative(),
   _noteSeq: z.number().int().nonnegative(),
 });

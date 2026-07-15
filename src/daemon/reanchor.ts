@@ -1,8 +1,9 @@
 import type { Anchor, Side } from "../shared/types.js";
+import { resolveContent } from "./content-store.js";
 import type { StoredRevision, StoredRevisionFile } from "./storage-types.js";
 
-function sideContent(file: StoredRevisionFile, side: Side): string | null {
-  return side === "NEW" ? file.newContent : file.oldContent;
+function sideContent(blobs: Record<string, string>, file: StoredRevisionFile, side: Side): string | null {
+  return resolveContent(blobs, side === "NEW" ? file.newRef : file.oldRef);
 }
 
 // Locates an anchor's line within a target revision by exact line-content
@@ -20,13 +21,14 @@ export function findAnchorLine(
   sourceRevision: StoredRevision,
   targetRevision: StoredRevision,
   anchor: Pick<Anchor, "path" | "side" | "line">,
+  blobs: Record<string, string>,
 ): number | null {
   const sourceFile = sourceRevision.files.find((f) => f.path === anchor.path);
   const targetFile = targetRevision.files.find((f) => f.path === anchor.path);
   if (!sourceFile || !targetFile) return null;
 
-  const sourceContent = sideContent(sourceFile, anchor.side);
-  const targetContent = sideContent(targetFile, anchor.side);
+  const sourceContent = sideContent(blobs, sourceFile, anchor.side);
+  const targetContent = sideContent(blobs, targetFile, anchor.side);
   if (sourceContent === null || targetContent === null) return null;
 
   const sourceLines = sourceContent.split("\n");
